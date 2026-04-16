@@ -24,6 +24,14 @@ function getGreetingKey(): string {
   return 'greetingNight';
 }
 
+function getGreetingEmoji(): string {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return '☀️';
+  if (h >= 12 && h < 18) return '🌤️';
+  if (h >= 18 && h < 22) return '🌇';
+  return '🌙';
+}
+
 export default function HomeScreen() {
   const { firstInsertDate, ringStatus, cycleLogs, insertRing, removeRing, resetAll, userName, darkMode, startTempRemoval } = useCycleStore();
   const { width } = useWindowDimensions();
@@ -80,7 +88,7 @@ export default function HomeScreen() {
           <View style={styles.headerTop}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.greeting, { color: theme.primaryDark }]}>
-                {t(getGreetingKey())}{userName ? `, ${userName}` : ''}
+                {getGreetingEmoji()} {t(getGreetingKey())}{userName ? `, ${userName}` : ''}
               </Text>
               <Text style={[styles.date, { color: theme.textSecondary }]}>{formatDateFr(new Date(), 'EEEE dd MMMM')}</Text>
             </View>

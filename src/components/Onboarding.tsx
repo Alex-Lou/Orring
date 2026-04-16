@@ -474,18 +474,6 @@ function WelcomeStep({ name, onDone, t, theme }: any) {
     return () => clearTimeout(tm);
   }, []);
 
-  const heart = useSharedValue(1);
-  useEffect(() => {
-    heart.value = withRepeat(
-      withSequence(
-        withTiming(1.15, { duration: 600 }),
-        withTiming(1, { duration: 600 }),
-      ),
-      -1, false,
-    );
-  }, []);
-  const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: heart.value }] }));
-
   const line = name ? `${t('onbWelcome')}, ${name} !` : t('onbWelcomeAnon');
 
   return (
@@ -494,9 +482,6 @@ function WelcomeStep({ name, onDone, t, theme }: any) {
       exiting={FadeOut.duration(500)}
       style={styles.welcomeWrap}
     >
-      <Animated.View style={heartStyle}>
-        <Text style={styles.welcomeEmoji}>💜</Text>
-      </Animated.View>
       <Animated.Text entering={FadeInUp.delay(300).duration(600)} style={[styles.welcomeText, { color: theme.primaryDark }]}>
         {line}
       </Animated.Text>
