@@ -21,8 +21,7 @@ const DARK = {
 };
 
 const ROUTE_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; titleKey: string }> = {
-  index: { icon: 'heart-circle', titleKey: 'home' },
-  cycle: { icon: 'ellipse', titleKey: 'myCycleDrawer' },
+  index: { icon: 'ellipse', titleKey: 'myCycleDrawer' },
   calendar: { icon: 'calendar', titleKey: 'calendarDrawer' },
   history: { icon: 'time', titleKey: 'historyDrawer' },
   explanations: { icon: 'book-outline', titleKey: 'explanationsDrawer' },
@@ -133,7 +132,6 @@ export default function RootLayout() {
         screenOptions={getScreenOptions}
       >
         <Drawer.Screen name="index" />
-        <Drawer.Screen name="cycle" />
         <Drawer.Screen name="calendar" />
         <Drawer.Screen name="history" />
         <Drawer.Screen name="explanations" />

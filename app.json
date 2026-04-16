@@ -2,7 +2,7 @@
   "expo": {
     "name": "Orring",
     "slug": "OrrniApp",
-    "version": "2.1.2",
+    "version": "2.1.3",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -23,7 +23,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.orrniapp",
-      "versionCode": 2
+      "versionCode": 3
     },
     "plugins": [
       "expo-router",
