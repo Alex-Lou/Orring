@@ -39,3 +39,18 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Claude Code worktrees
+.claude/
+
+# IDE
+.idea/
+.vscode/
+
+# Backup/test images
+assets/1.jpg
+assets/2.jpg
+assets/king.png
+
+# APK dumps
+*.apk
