@@ -10,7 +10,7 @@ import { useTheme } from '../src/theme/useTheme';
 import { useTranslation } from 'react-i18next';
 
 export default function HistoryScreen() {
-  const { firstInsertDate, cycleLogs, periodLogs, clearHistory, deleteCycleLogsBetween } = useCycleStore();
+  const { firstInsertDate, cycleLogs, periodLogs, clearHistory, deleteCycleLogsBetween, setRingStatus } = useCycleStore();
   const [historyOpen, setHistoryOpen] = useState(true);
   const [previsionsOpen, setPrevisionsOpen] = useState(false);
   const { t } = useTranslation();
@@ -71,21 +71,38 @@ export default function HistoryScreen() {
                 <CycleHistoryCard
                   entry={entry}
                   index={index}
-                  onDelete={() => Alert.alert(
-                    t('deleteCycle'),
-                    t('deleteCycleRange', { start: formatDateFr(entry.theoreticalInsertDate, 'dd MMM'), end: formatDateFr(entry.theoreticalPauseEnd, 'dd MMM') }),
-                    [
-                      { text: t('cancel'), style: 'cancel' },
-                      { text: t('delete'), style: 'destructive', onPress: () => {
-                        // Use wide range: from start of insert day to end of pause day
-                        const startDay = new Date(entry.theoreticalInsertDate);
-                        startDay.setHours(0, 0, 0, 0);
-                        const endDay = new Date(entry.theoreticalPauseEnd);
-                        endDay.setHours(23, 59, 59, 999);
-                        deleteCycleLogsBetween(startDay.getTime(), endDay.getTime());
-                      }},
-                    ]
-                  )}
+                  onDelete={() => {
+                    const startDay = new Date(entry.theoreticalInsertDate);
+                    startDay.setHours(0, 0, 0, 0);
+                    const endDay = new Date(entry.theoreticalPauseEnd);
+                    endDay.setHours(23, 59, 59, 999);
+
+                    if (entry.status === 'current') {
+                      Alert.alert(
+                        t('deleteCurrentCycleTitle'),
+                        t('deleteCurrentCycleMessage'),
+                        [
+                          { text: t('cancel'), style: 'cancel' },
+                          { text: t('confirm'), style: 'destructive', onPress: () => {
+                            deleteCycleLogsBetween(startDay.getTime(), endDay.getTime());
+                            setRingStatus('out');
+                          }},
+                        ]
+                      );
+                      return;
+                    }
+
+                    Alert.alert(
+                      t('deleteCycle'),
+                      t('deleteCycleRange', { start: formatDateFr(entry.theoreticalInsertDate, 'dd MMM'), end: formatDateFr(entry.theoreticalPauseEnd, 'dd MMM') }),
+                      [
+                        { text: t('cancel'), style: 'cancel' },
+                        { text: t('delete'), style: 'destructive', onPress: () => {
+                          deleteCycleLogsBetween(startDay.getTime(), endDay.getTime());
+                        }},
+                      ]
+                    );
+                  }}
                 />
               </Animated.View>
             ))}

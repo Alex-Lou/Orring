@@ -1,0 +1,69 @@
+Orring Proprietary License
+Copyright (c) 2026 Alex Lou — All Rights Reserved.
+
+1. DEFINITIONS
+   "Software" means the Orring application, including its source code, compiled
+   binaries (APK, AAB, iOS bundles), assets (images, icons, illustrations,
+   translations, copy, audio), design language, trademarks, and any derivative
+   or subsequent version.
+   "End User" means an individual who installs the compiled Software on their
+   personal device for personal, non-commercial use.
+   "Holder" means the copyright holder listed above.
+
+2. GRANT TO END USERS
+   The Holder grants every End User a free, personal, non-exclusive,
+   non-transferable right to download, install and use the compiled Software
+   on their personal devices, at no cost, for personal and non-commercial
+   purposes only. Orring is and remains free of charge for all End Users.
+
+3. RESTRICTIONS
+   Except as strictly permitted in Section 2, NO other right is granted.
+   Without prior, express, written permission from the Holder, you SHALL NOT,
+   in whole or in part, directly or indirectly:
+
+   (a) reproduce, copy, mirror, republish, rehost, or redistribute the
+       Software, its source code, binaries, or assets;
+   (b) modify, adapt, translate, port, fork, reverse-engineer, decompile,
+       disassemble, or create derivative works of the Software;
+   (c) sell, license, sublicense, rent, lease, lend, or otherwise exploit the
+       Software commercially, or use it to generate revenue or promote a
+       commercial product or service;
+   (d) bundle, repackage, re-sign, or re-upload the Software on any third-party
+       store, marketplace, download site, APK mirror, or distribution channel;
+   (e) use the Software, its name, logo, trade dress or any confusingly similar
+       sign to suggest affiliation with, endorsement by, or certification from
+       the Holder;
+   (f) use the Software or any part of it to train, fine-tune, evaluate, or
+       ground machine-learning or generative-AI systems, datasets or models;
+   (g) remove, alter, obscure, or bypass any copyright notice, attribution,
+       licensing, or security mechanism contained in the Software.
+
+4. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS
+   FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. USE AT YOUR OWN RISK. ORRING
+   IS NOT A MEDICAL DEVICE AND DOES NOT PROVIDE MEDICAL ADVICE. FOR ANY HEALTH
+   DECISION, CONSULT A LICENSED HEALTHCARE PROFESSIONAL.
+
+5. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL THE HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+   LIABILITY, WHETHER IN CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR
+   IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+6. ENFORCEMENT
+   Any breach of Section 3 terminates, automatically and immediately, all
+   rights granted under this License, and constitutes an infringement of the
+   Holder's intellectual-property rights. The Holder reserves the right to
+   pursue any and all available remedies, including injunctive relief,
+   statutory damages, actual damages, disgorgement of profits, attorneys'
+   fees, and takedown requests under the DMCA or equivalent national laws.
+
+7. RESERVATION OF RIGHTS
+   All rights not expressly granted herein are reserved by the Holder. No
+   implied license is granted by estoppel, exhaustion, or otherwise. Contact
+   the Holder for any request outside the scope of Section 2.
+
+8. GOVERNING LAW
+   This License is governed by the laws of France, without regard to its
+   conflict-of-law provisions. Exclusive jurisdiction lies with the competent
+   courts of Paris, France.

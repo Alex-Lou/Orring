@@ -137,9 +137,13 @@ export const useCycleStore = create<CycleState>()(
           cycleLogs: [...get().cycleLogs, newLog],
           ringStatus: 'out',
         });
-        // Reschedule for next insertion
+        // Reschedule from the actual last insertion (NOT the removal date),
+        // otherwise the next cycle's J-7/J-1 reminders would be offset.
         if (get().notificationsEnabled) {
-          scheduleRingNotifications(new Date(removeDate), get().reminderHour, get().reminderMinute).catch(() => {});
+          const lastInsert = [...get().cycleLogs, newLog].filter(l => l.action === 'insert').pop();
+          if (lastInsert) {
+            scheduleRingNotifications(new Date(lastInsert.date), get().reminderHour, get().reminderMinute).catch(() => {});
+          }
         }
       },
 
@@ -264,7 +268,10 @@ export const useCycleStore = create<CycleState>()(
       },
     }),
     {
-      name: 'orrniapp-storage',
+      // Key bumped to force-discard any data written by pre-v2.1.2 builds.
+      // The old schema is incompatible and not recoverable, so fresh install it is.
+      name: 'orring-storage-v2',
+      version: 1,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         // Only persist data, not actions or hydration flag
@@ -283,7 +290,12 @@ export const useCycleStore = create<CycleState>()(
         tempRemovalStart: state.tempRemovalStart,
         tempRemovalNotify: state.tempRemovalNotify,
       }),
+      migrate: (_persisted, _version) => {
+        // No migration path from older builds — always return a clean slate.
+        return { ...INITIAL_DATA };
+      },
       onRehydrateStorage: () => () => {
+        AsyncStorage.removeItem('orrniapp-storage').catch(() => {});
         useCycleStore.setState({ _hasHydrated: true });
       },
     }

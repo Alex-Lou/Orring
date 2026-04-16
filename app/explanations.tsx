@@ -24,7 +24,7 @@ const SITE_URL = 'https://alex-lou.github.io/OrringLanding/';
 export default function ExplanationsScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
-  const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const openSite = () => {
     Linking.openURL(SITE_URL).catch(() => { /* ignore */ });
