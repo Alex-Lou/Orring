@@ -52,6 +52,9 @@ function Wheel({ value, onChange, min, max, step = 1, format }: WheelProps) {
         decelerationRate="fast"
         onMomentumScrollEnd={handleMomentumEnd}
         contentContainerStyle={{ paddingVertical: padding }}
+        nestedScrollEnabled
+        overScrollMode="never"
+        bounces={false}
       >
         {items.map((item) => {
           const isActive = item === value;

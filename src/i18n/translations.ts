@@ -257,6 +257,13 @@ export const translations = {
       hours: 'h',
       minutes: 'min',
       seconds: 's',
+      // Over-the-air updates
+      updateChecking: 'Vérification des mises à jour',
+      updateDownloading: 'Téléchargement de la nouvelle version',
+      updateReady: 'Nouvelle version prête',
+      updateReloadHint: 'Appuie pour redémarrer avec la nouvelle version',
+      updateInstalling: 'Installation de la nouvelle version',
+      updateWait: 'Merci de patienter un instant ✨',
     },
   },
   en: {
@@ -503,6 +510,13 @@ export const translations = {
       hours: 'h',
       minutes: 'min',
       seconds: 's',
+      // Over-the-air updates
+      updateChecking: 'Checking for updates',
+      updateDownloading: 'Downloading the new version',
+      updateReady: 'New version ready',
+      updateReloadHint: 'Tap to restart with the new version',
+      updateInstalling: 'Installing the new version',
+      updateWait: 'Just a moment please ✨',
     },
   },
   nl: {
@@ -723,6 +737,13 @@ export const translations = {
       hours: 'u',
       minutes: 'min',
       seconds: 's',
+      // Over-the-air updates
+      updateChecking: 'Controleren op updates',
+      updateDownloading: 'Nieuwe versie downloaden',
+      updateReady: 'Nieuwe versie klaar',
+      updateReloadHint: 'Tik om opnieuw te starten met de nieuwe versie',
+      updateInstalling: 'Nieuwe versie installeren',
+      updateWait: 'Even geduld alsjeblieft ✨',
     },
   },
   ru: {
@@ -943,6 +964,13 @@ export const translations = {
       hours: 'ч',
       minutes: 'мин',
       seconds: 'с',
+      // Over-the-air updates
+      updateChecking: 'Проверка обновлений',
+      updateDownloading: 'Загрузка новой версии',
+      updateReady: 'Новая версия готова',
+      updateReloadHint: 'Нажми, чтобы перезапустить с новой версией',
+      updateInstalling: 'Установка новой версии',
+      updateWait: 'Пожалуйста, подожди немного ✨',
     },
   },
   es: {
@@ -1190,6 +1218,13 @@ export const translations = {
       hours: 'h',
       minutes: 'min',
       seconds: 's',
+      // Over-the-air updates
+      updateChecking: 'Buscando actualizaciones',
+      updateDownloading: 'Descargando la nueva versión',
+      updateReady: 'Nueva versión lista',
+      updateReloadHint: 'Toca para reiniciar con la nueva versión',
+      updateInstalling: 'Instalando la nueva versión',
+      updateWait: 'Un momento por favor ✨',
     },
   },
   pt: {
@@ -1437,6 +1472,13 @@ export const translations = {
       hours: 'h',
       minutes: 'min',
       seconds: 's',
+      // Over-the-air updates
+      updateChecking: 'Buscando atualizações',
+      updateDownloading: 'Baixando a nova versão',
+      updateReady: 'Nova versão pronta',
+      updateReloadHint: 'Toque para reiniciar com a nova versão',
+      updateInstalling: 'Instalando a nova versão',
+      updateWait: 'Um momento por favor ✨',
     },
   },
   de: {
@@ -1684,6 +1726,13 @@ export const translations = {
       hours: 'Std',
       minutes: 'Min',
       seconds: 's',
+      // Over-the-air updates
+      updateChecking: 'Suche nach Updates',
+      updateDownloading: 'Neue Version wird geladen',
+      updateReady: 'Neue Version bereit',
+      updateReloadHint: 'Tippen, um mit der neuen Version neu zu starten',
+      updateInstalling: 'Neue Version wird installiert',
+      updateWait: 'Einen Moment bitte ✨',
     },
   },
   ar: {
@@ -1931,6 +1980,13 @@ export const translations = {
       hours: 'س',
       minutes: 'د',
       seconds: 'ث',
+      // Over-the-air updates
+      updateChecking: 'البحث عن تحديثات',
+      updateDownloading: 'تنزيل النسخة الجديدة',
+      updateReady: 'النسخة الجديدة جاهزة',
+      updateReloadHint: 'انقري لإعادة التشغيل بالنسخة الجديدة',
+      updateInstalling: 'تثبيت النسخة الجديدة',
+      updateWait: 'لحظة من فضلك ✨',
     },
   },
   zh: {
@@ -2178,6 +2234,13 @@ export const translations = {
       hours: '小时',
       minutes: '分',
       seconds: '秒',
+      // Over-the-air updates
+      updateChecking: '正在检查更新',
+      updateDownloading: '正在下载新版本',
+      updateReady: '新版本已就绪',
+      updateReloadHint: '点击以新版本重新启动',
+      updateInstalling: '正在安装新版本',
+      updateWait: '请稍等片刻 ✨',
     },
   },
   ja: {
@@ -2425,6 +2488,13 @@ export const translations = {
       hours: '時間',
       minutes: '分',
       seconds: '秒',
+      // Over-the-air updates
+      updateChecking: 'アップデートを確認中',
+      updateDownloading: '新しいバージョンをダウンロード中',
+      updateReady: '新しいバージョンの準備完了',
+      updateReloadHint: 'タップして新しいバージョンで再起動',
+      updateInstalling: '新しいバージョンをインストール中',
+      updateWait: 'お待ちください ✨',
     },
   },
 };

@@ -6,6 +6,8 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { useTheme } from '../theme/useTheme';
+import { useTranslation } from 'react-i18next';
+import type { UpdateStatus } from '../hooks/useExpoUpdates';
 
 /**
  * Shown during the 1–3 seconds of app boot: while the persisted store
@@ -22,12 +24,15 @@ import { useTheme } from '../theme/useTheme';
 interface Props {
   /** Target progression in [0, 1]. Component smoothly animates towards it. */
   progress: number;
+  /** Current OTA check state — drives the contextual status line. */
+  updateStatus?: UpdateStatus;
 }
 
 const ANIM_MS = 450;
 
-export function SplashScreen({ progress }: Props) {
+export function SplashScreen({ progress, updateStatus = 'idle' }: Props) {
   const theme = useTheme();
+  const { t } = useTranslation();
 
   // Logo breath animation — never stops while the splash is visible.
   const pulse = useSharedValue(1);
@@ -118,6 +123,21 @@ export function SplashScreen({ progress }: Props) {
         <Text style={[styles.percentage, { color: theme.textSecondary }]}>
           {displayPct}%
         </Text>
+
+        {(updateStatus === 'checking' || updateStatus === 'downloading') && (
+          <Animated.View
+            entering={FadeIn.duration(250)}
+            exiting={FadeOut.duration(150)}
+            style={styles.updateBlock}
+          >
+            <Text style={[styles.updateMain, { color: theme.primaryDark }]}>
+              {updateStatus === 'checking' ? t('updateChecking') : t('updateInstalling')}
+            </Text>
+            <Text style={[styles.updateSub, { color: theme.textSecondary }]}>
+              {t('updateWait')}
+            </Text>
+          </Animated.View>
+        )}
       </View>
     </Animated.View>
   );
@@ -169,5 +189,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 1,
     fontVariant: ['tabular-nums'],
+  },
+  updateBlock: {
+    marginTop: 18,
+    alignItems: 'center',
+  },
+  updateMain: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  updateSub: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

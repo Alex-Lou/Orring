@@ -59,6 +59,22 @@ export function useExpoUpdates() {
   const isBusy = status === 'checking' || status === 'downloading';
   /** True once the hook has finished, whether or not an update was applied. */
   const isSettled = status === 'idle' || status === 'ready' || status === 'error' || status === 'disabled';
+  /** True when a newer bundle is downloaded and waiting for a reload to apply. */
+  const isReady = status === 'ready';
 
-  return { status, isBusy, isSettled };
+  /**
+   * Forces an immediate reload with the new bundle. Safe to call only when
+   * `isReady` is true; otherwise it's a no-op (we don't want to disturb the
+   * user mid-session for nothing).
+   */
+  const applyUpdate = async () => {
+    if (status !== 'ready') return;
+    try {
+      await Updates.reloadAsync();
+    } catch {
+      /* swallow — app stays as-is, user can still kill manually */
+    }
+  };
+
+  return { status, isBusy, isSettled, isReady, applyUpdate };
 }

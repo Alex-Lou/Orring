@@ -220,7 +220,7 @@ export default function SettingsScreen() {
           <Text style={styles.resetText}>{t('settingsResetButton')}</Text>
         </Pressable>
 
-        <Text style={[styles.version, { color: theme.textLight }]}>Orring v2.1.4 · MAJ auto ✨</Text>
+        <Text style={[styles.version, { color: theme.textLight }]}>Version 2.1.455</Text>
       </ScrollView>
     </SafeAreaView>
   );

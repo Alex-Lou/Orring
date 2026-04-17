@@ -7,6 +7,7 @@ import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawe
 import { requestNotificationPermissions } from '../src/utils/notifications';
 import { useExpoUpdates } from '../src/hooks/useExpoUpdates';
 import { SplashScreen } from '../src/components/SplashScreen';
+import { UpdateIndicator } from '../src/components/UpdateIndicator';
 import { useCycleStore } from '../src/store/cycleStore';
 import { LANGUAGES } from '../src/i18n/translations';
 import '../src/i18n';
@@ -96,8 +97,9 @@ export default function RootLayout() {
   const { t } = useTranslation();
   const theme = darkMode ? DARK : LIGHT;
 
-  // Silent OTA check at boot — next cold start applies any pending update.
-  const { status: updateStatus, isSettled: updateSettled } = useExpoUpdates();
+  // Silent OTA check at boot — user can apply a ready update via the
+  // floating UpdateIndicator without force-closing the app manually.
+  const { status: updateStatus, isSettled: updateSettled, applyUpdate } = useExpoUpdates();
 
   // Guarantees the splash stays visible for MIN_SPLASH_MS even on a very
   // fast boot — avoids a jarring flash when hydration + OTA check finish
@@ -155,7 +157,7 @@ export default function RootLayout() {
   if (!ready) {
     return (
       <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.bg }}>
-        <SplashScreen progress={progress} />
+        <SplashScreen progress={progress} updateStatus={updateStatus} />
       </GestureHandlerRootView>
     );
   }
@@ -172,6 +174,7 @@ export default function RootLayout() {
         <Drawer.Screen name="explanations" />
         <Drawer.Screen name="settings" />
       </Drawer>
+      <UpdateIndicator status={updateStatus} onApply={applyUpdate} />
     </GestureHandlerRootView>
   );
 }
