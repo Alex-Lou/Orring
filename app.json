@@ -13,9 +13,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#FFF0F5"
     },
-    "runtimeVersion": {
-      "policy": "fingerprint"
-    },
+    "runtimeVersion": "2.1.4",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",

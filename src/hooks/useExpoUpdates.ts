@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import * as Updates from 'expo-updates';
 
-type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
+export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'error' | 'disabled';
 
 /**
  * Silent OTA check at app start.
@@ -21,7 +21,9 @@ type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
  * `status === 'ready'` signal is right here to wire it up.
  */
 export function useExpoUpdates() {
-  const [status, setStatus] = useState<UpdateStatus>('idle');
+  const [status, setStatus] = useState<UpdateStatus>(() =>
+    __DEV__ || !Updates.isEnabled ? 'disabled' : 'idle',
+  );
 
   useEffect(() => {
     // Skip when running under Metro (dev) or when the APK was built
@@ -53,5 +55,10 @@ export function useExpoUpdates() {
     return () => { cancelled = true; };
   }, []);
 
-  return { status };
+  /** True while the hook still has network work in flight. */
+  const isBusy = status === 'checking' || status === 'downloading';
+  /** True once the hook has finished, whether or not an update was applied. */
+  const isSettled = status === 'idle' || status === 'ready' || status === 'error' || status === 'disabled';
+
+  return { status, isBusy, isSettled };
 }

@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { requestNotificationPermissions } from '../src/utils/notifications';
 import { useExpoUpdates } from '../src/hooks/useExpoUpdates';
+import { SplashScreen } from '../src/components/SplashScreen';
 import { useCycleStore } from '../src/store/cycleStore';
 import { LANGUAGES } from '../src/i18n/translations';
 import '../src/i18n';
@@ -88,13 +89,24 @@ function CustomDrawerContent(props: any) {
 }
 
 // ─── Root Layout ───
+const MIN_SPLASH_MS = 1100;
+
 export default function RootLayout() {
   const { darkMode, language, _hasHydrated } = useCycleStore();
   const { t } = useTranslation();
   const theme = darkMode ? DARK : LIGHT;
 
   // Silent OTA check at boot — next cold start applies any pending update.
-  useExpoUpdates();
+  const { status: updateStatus, isSettled: updateSettled } = useExpoUpdates();
+
+  // Guarantees the splash stays visible for MIN_SPLASH_MS even on a very
+  // fast boot — avoids a jarring flash when hydration + OTA check finish
+  // in < 200 ms.
+  const [minTimeElapsed, setMinTimeElapsed] = useState(false);
+  useEffect(() => {
+    const tm = setTimeout(() => setMinTimeElapsed(true), MIN_SPLASH_MS);
+    return () => clearTimeout(tm);
+  }, []);
 
   useEffect(() => {
     requestNotificationPermissions().catch(() => {});
@@ -124,9 +136,28 @@ export default function RootLayout() {
     };
   }, [t, theme, language]);
 
-  // Wait for store hydration (show blank lavender bg)
-  if (!_hasHydrated) {
-    return <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.bg }} />;
+  // Boot progress mapping (0 → 1). The numbers are deliberately coarse
+  // because we don't get real download progress from expo-updates; they
+  // just convey "something is happening" with 4 meaningful checkpoints.
+  const hydrationFloor = 0.18;
+  const checkedFloor = 0.55;
+  const downloadFloor = 0.82;
+  const finishedFloor = 1;
+  let progress = 0.05;
+  if (_hasHydrated) progress = hydrationFloor;
+  if (updateStatus === 'checking') progress = 0.35;
+  if (updateStatus === 'downloading') progress = downloadFloor;
+  if (_hasHydrated && updateSettled) progress = finishedFloor;
+  else if (_hasHydrated && (updateStatus === 'checking' || updateStatus === 'downloading')) progress = Math.max(progress, checkedFloor);
+
+  const ready = _hasHydrated && updateSettled && minTimeElapsed;
+
+  if (!ready) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.bg }}>
+        <SplashScreen progress={progress} />
+      </GestureHandlerRootView>
+    );
   }
 
   return (
