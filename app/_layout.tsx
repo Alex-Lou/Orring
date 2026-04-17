@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { requestNotificationPermissions } from '../src/utils/notifications';
+import { useExpoUpdates } from '../src/hooks/useExpoUpdates';
 import { useCycleStore } from '../src/store/cycleStore';
 import { LANGUAGES } from '../src/i18n/translations';
 import '../src/i18n';
@@ -91,6 +92,9 @@ export default function RootLayout() {
   const { darkMode, language, _hasHydrated } = useCycleStore();
   const { t } = useTranslation();
   const theme = darkMode ? DARK : LIGHT;
+
+  // Silent OTA check at boot — next cold start applies any pending update.
+  useExpoUpdates();
 
   useEffect(() => {
     requestNotificationPermissions().catch(() => {});
