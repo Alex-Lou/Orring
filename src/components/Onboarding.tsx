@@ -176,7 +176,7 @@ function IntroStep() {
   return (
     <Animated.View entering={FadeIn.duration(400)} exiting={FadeOut.duration(500)} style={styles.introWrap}>
       <Animated.View style={[styles.introLogoWrap, style]}>
-        <Image source={require('../../assets/OrringLogo.png')} style={styles.introLogo} />
+        <Image source={require('../../assets/OrringBluePetNoBgSalute.png')} style={styles.introLogo} resizeMode="contain" />
       </Animated.View>
       <Animated.Text entering={FadeInUp.delay(400).duration(700)} style={styles.introTitle}>
         Orring

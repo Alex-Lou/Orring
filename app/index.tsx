@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, useWindowDimensions, Alert } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, Pressable, useWindowDimensions, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp, FadeIn, SlideInRight } from 'react-native-reanimated';
 import { addDays, isSameDay, startOfDay } from 'date-fns';
@@ -34,6 +34,16 @@ function getGreetingEmoji(): string {
   if (h >= 12 && h < 18) return '🌤️';
   if (h >= 18 && h < 22) return '🌇';
   return '🌙';
+}
+
+// Pet next to the greeting — awake variant in daytime, sleeping variant after 18h.
+// Night adds a tiny zzz so the rest state is unambiguous.
+type PetState = 'none' | 'awake' | 'evening' | 'night';
+function getPetState(): PetState {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 18) return 'awake';
+  if (h >= 18 && h < 22) return 'evening';
+  return 'night'; // 22h–5h
 }
 
 export default function MyCycleScreen() {
@@ -136,9 +146,41 @@ export default function MyCycleScreen() {
         <Animated.View entering={FadeInDown.duration(700).springify()} style={styles.header}>
           <View style={styles.headerTop}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.greeting, { color: theme.primaryDark }]}>
-                {getGreetingEmoji()} {t(getGreetingKey())}{userName ? `, ${userName}` : ''}
-              </Text>
+              <View style={styles.greetingRow}>
+                {(() => {
+                  const petState = getPetState();
+                  if (petState === 'none') return null;
+                  const isAwake = petState === 'awake';
+                  return (
+                    <View style={styles.petWrap}>
+                      <Image
+                        source={
+                          isAwake
+                            ? require('../assets/OrringBluePetNoBgSalute.png')
+                            : require('../assets/OrringBluePetSleepingNoBg.png')
+                        }
+                        style={[
+                          styles.petBird,
+                          // Sleeping bird faces the wrong way when placed left of text;
+                          // mirror it so it nestles toward the greeting.
+                          !isAwake && { transform: [{ scaleX: -1 }] },
+                        ]}
+                        resizeMode="contain"
+                      />
+                      {petState === 'night' && (
+                        <Image
+                          source={require('../assets/zzz.jpg')}
+                          style={styles.petZzz}
+                          resizeMode="contain"
+                        />
+                      )}
+                    </View>
+                  );
+                })()}
+                <Text style={[styles.greeting, { color: theme.primaryDark }]}>
+                  {t(getGreetingKey())}{userName ? `, ${userName}` : ''} {getGreetingEmoji()}
+                </Text>
+              </View>
               <Text style={[styles.date, { color: theme.textSecondary }]}>
                 {formatDateFr(new Date(), 'EEEE dd MMMM')}
               </Text>
@@ -316,7 +358,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  greeting: { fontSize: fontSize.xxl, fontWeight: fontWeight.black, letterSpacing: -0.5 },
+  greeting: { fontSize: fontSize.xxl, fontWeight: fontWeight.black, letterSpacing: -0.5, flexShrink: 1 },
+  greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  petWrap: {
+    width: 46,
+    height: 46,
+    position: 'relative',
+  },
+  petBird: {
+    width: 44,
+    height: 44,
+  },
+  petZzz: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    width: 22,
+    height: 22,
+  },
   date: { fontSize: fontSize.md, marginTop: 2, textTransform: 'capitalize' },
   since: { fontSize: fontSize.sm, marginTop: 2, textTransform: 'capitalize' },
 

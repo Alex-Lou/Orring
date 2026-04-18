@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Linking } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, Pressable, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp, FadeIn } from 'react-native-reanimated';
 import { spacing, fontSize, fontWeight, borderRadius } from '../src/theme';
@@ -37,7 +37,14 @@ export default function ExplanationsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={FadeInDown.duration(600)}>
-          <Text style={[styles.title, { color: theme.text }]}>{t('explanationsTitle')}</Text>
+          <View style={styles.screenTitleRow}>
+            <Image
+              source={require('../assets/OrringBluePetNoBgSalute.png')}
+              style={styles.screenTitlePet}
+              resizeMode="contain"
+            />
+            <Text style={[styles.title, { color: theme.text }]}>{t('explanationsTitle')}</Text>
+          </View>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{t('explanationsSub')}</Text>
         </Animated.View>
 
@@ -62,6 +69,13 @@ export default function ExplanationsScreen() {
                   <Text style={[styles.cardTitle, { color: theme.text }]}>
                     {t(section.titleKey)}
                   </Text>
+                  {isOpen && (
+                    <Image
+                      source={require('../assets/OrringBluePetNoBgSalute.png')}
+                      style={styles.sectionPet}
+                      resizeMode="contain"
+                    />
+                  )}
                 </View>
                 <Text style={[styles.chevron, { color: theme.primaryDark }]}>
                   {isOpen ? '▼' : '▶'}
@@ -132,6 +146,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   emoji: { fontSize: 26 },
+  screenTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  screenTitlePet: { width: 42, height: 42 },
+  // Section pet — shown right of title only when the card is expanded.
+  // Flipped so it "points" back at the title on its left.
+  sectionPet: {
+    width: 32,
+    height: 32,
+    marginLeft: 4,
+    transform: [{ scaleX: -1 }],
+  },
   cardTitle: {
     fontSize: fontSize.md,
     fontWeight: fontWeight.bold,

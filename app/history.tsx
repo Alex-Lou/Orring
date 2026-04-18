@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeIn, FadeInUp } from 'react-native-reanimated';
 import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '../src/theme';
@@ -28,7 +28,12 @@ export default function HistoryScreen() {
   if (!firstInsertDate) {
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-        <View style={styles.headerBox}><Text style={[styles.title, { color: theme.text }]}>{t('history')}</Text></View>
+        <View style={[styles.headerBox, { paddingHorizontal: spacing.lg }]}>
+          <View style={styles.titleRow}>
+            <Image source={require('../assets/OrringBluePetNoBgSalute.png')} style={styles.titlePet} resizeMode="contain" />
+            <Text style={[styles.title, { color: theme.text }]}>{t('history')}</Text>
+          </View>
+        </View>
         <View style={styles.empty}>
           <Text style={styles.emptyEmoji}>📋</Text>
           <Text style={[styles.emptyText, { color: theme.textSecondary }]}>{t('configureStartHistory')}</Text>
@@ -42,7 +47,10 @@ export default function HistoryScreen() {
       <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInDown.duration(600).springify()} style={styles.headerBox}>
           <View style={styles.headerRow}>
-            <Text style={[styles.title, { color: theme.text }]}>{t('history')}</Text>
+            <View style={styles.titleRow}>
+              <Image source={require('../assets/OrringBluePetNoBgSalute.png')} style={styles.titlePet} resizeMode="contain" />
+              <Text style={[styles.title, { color: theme.text }]}>{t('history')}</Text>
+            </View>
             {cycleLogs.length > 0 && (
               <Pressable
                 onPress={() => Alert.alert(t('deleteAllTitle'), t('deleteAllConfirm'), [
@@ -132,9 +140,13 @@ export default function HistoryScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
-  headerBox: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
+  // No horizontal padding — inherits from the ScrollView's listContent padding
+  // to keep the title flush with the rest of the list content.
+  headerBox: { paddingTop: spacing.md, paddingBottom: spacing.sm },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: fontSize.xxl, fontWeight: fontWeight.black, color: colors.text, letterSpacing: -0.5 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  titlePet: { width: 42, height: 42 },
   clearBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: borderRadius.full, backgroundColor: '#FDE8E8' },
   clearText: { fontSize: fontSize.xs, color: '#C62828', fontWeight: fontWeight.semibold },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Modal, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, Modal, Pressable, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { addMonths, isSameMonth } from 'date-fns';
@@ -79,7 +79,14 @@ export default function CalendarScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInDown.duration(600).springify()}>
-          <Text style={[styles.title, { color: theme.text }]}>{t('calendar')}</Text>
+          <View style={styles.titleRow}>
+            <Image
+              source={require('../assets/OrringBluePetNoBgSalute.png')}
+              style={styles.titlePet}
+              resizeMode="contain"
+            />
+            <Text style={[styles.title, { color: theme.text }]}>{t('calendar')}</Text>
+          </View>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{t('calendarSub')}</Text>
         </Animated.View>
 
@@ -174,6 +181,11 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, paddingTop: spacing.md },
 
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  titlePet: {
+    width: 42,
+    height: 42,
+  },
   title: { fontSize: fontSize.xxl, fontWeight: fontWeight.black, color: colors.text, letterSpacing: -0.5 },
   subtitle: { fontSize: fontSize.md, color: colors.textSecondary, marginTop: 2, marginBottom: spacing.md },
 

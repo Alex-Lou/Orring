@@ -90,7 +90,7 @@ export function SplashScreen({ progress, updateStatus = 'idle' }: Props) {
     >
       <Animated.View style={[styles.logoWrap, logoStyle]}>
         <Image
-          source={require('../../assets/OrringLogo.png')}
+          source={require('../../assets/OrringBluePetNoBgSalute.png')}
           style={styles.logo}
           resizeMode="cover"
         />

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Switch, Alert, TextInput } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, Pressable, Switch, Alert, TextInput } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
@@ -69,7 +69,10 @@ export default function SettingsScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInDown.duration(600)}>
-          <Text style={[styles.title, { color: theme.text }]}>{t('settings')}</Text>
+          <View style={styles.titleRow}>
+            <Image source={require('../assets/OrringBluePetNoBgSalute.png')} style={styles.titlePet} resizeMode="contain" />
+            <Text style={[styles.title, { color: theme.text }]}>{t('settings')}</Text>
+          </View>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{t('configureTracking')}</Text>
         </Animated.View>
 
@@ -220,7 +223,7 @@ export default function SettingsScreen() {
           <Text style={styles.resetText}>{t('settingsResetButton')}</Text>
         </Pressable>
 
-        <Text style={[styles.version, { color: theme.textLight }]}>Version 2.1.455</Text>
+        <Text style={[styles.version, { color: theme.textLight }]}>Version 2.1.456</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -231,6 +234,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl },
   title: { fontSize: fontSize.xxl, fontWeight: fontWeight.bold, color: colors.text },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  titlePet: { width: 42, height: 42 },
   subtitle: { fontSize: fontSize.md, color: colors.textSecondary, marginTop: 4, marginBottom: spacing.lg },
 
   sectionTitle: {
