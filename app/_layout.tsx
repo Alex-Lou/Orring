@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, Image } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -13,6 +13,7 @@ import { LANGUAGES } from '../src/i18n/translations';
 import '../src/i18n';
 import i18n from '../src/i18n';
 import { useTranslation } from 'react-i18next';
+import { useIsRTL } from '../src/i18n/useIsRTL';
 
 const LIGHT = {
   bg: '#F6F2FB', headerBg: '#EFE8F7', tint: '#7F6EBA',
@@ -31,6 +32,178 @@ const ROUTE_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; title
   settings: { icon: 'settings-outline', titleKey: 'settingsDrawer' },
 };
 
+
+// ─── Greeting-icon debug picker (drawer header, index screen only) ───
+//
+// A tiny dropdown parked next to the "Mon Cycle" title lets us force any of
+// the four time-of-day icons (Matin / ApresMidi / Soir / Nuit) without having
+// to wait for the real clock or rebuild. Selecting "Auto" resets to the
+// time-based logic. State lives in the zustand store (non-persisted), so it
+// naturally resets on every app boot.
+//
+// Icon PNG sources stay at module scope (cheap `require` de-duplication),
+// but the label list is built inside the component so we can pull localized
+// strings from `t()` — crucial for languages like Arabic where hardcoded
+// French labels would look out of place.
+const ICON_SRCS = {
+  morning: require('../assets/icones/Matin.png'),
+  sun: require('../assets/icones/ApresMidi.png'),
+  sunset: require('../assets/icones/Soir.png'),
+  night: require('../assets/icones/Nuit.png'),
+};
+
+function GreetingIconDebugPicker() {
+  const { debugIconOverride, setDebugIconOverride, darkMode } = useCycleStore();
+  const { t } = useTranslation();
+  const isRTL = useIsRTL();
+  const [open, setOpen] = useState(false);
+  const theme = darkMode ? DARK : LIGHT;
+
+  // Rebuilt on every render so language changes take effect immediately —
+  // the work is trivial (5 small objects) so memoizing wouldn't win
+  // anything meaningful.
+  const ICON_OPTIONS: Array<{
+    key: 'morning' | 'sun' | 'sunset' | 'night' | null;
+    label: string;
+    src: any;
+  }> = [
+    { key: null, label: 'Auto', src: null },
+    { key: 'morning', label: t('greetingMorning'), src: ICON_SRCS.morning },
+    { key: 'sun', label: t('greetingAfternoon'), src: ICON_SRCS.sun },
+    { key: 'sunset', label: t('greetingEvening'), src: ICON_SRCS.sunset },
+    { key: 'night', label: t('greetingNight'), src: ICON_SRCS.night },
+  ];
+  const current = ICON_OPTIONS.find(o => o.key === debugIconOverride) ?? ICON_OPTIONS[0];
+
+  return (
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={({ pressed }) => [
+          debugStyles.trigger,
+          // Margin anchors the trigger to the edge it sits against: 12px
+          // inside the right edge in LTR (header-right slot), or 12px inside
+          // the left edge in RTL (header-left slot beside the RTL burger).
+          isRTL ? { marginLeft: 12 } : { marginRight: 12 },
+          { backgroundColor: theme.activeBg, opacity: pressed ? 0.7 : 1 },
+        ]}
+        hitSlop={8}
+      >
+        {current.src ? (
+          <Image
+            source={current.src}
+            style={[
+              debugStyles.triggerIcon,
+              // Nuit.png is 100%-framed while the others are ~85% — shrink
+              // it a touch so every icon looks the same visible size.
+              current.key === 'night' && { width: 19, height: 19 },
+            ]}
+            resizeMode="contain"
+          />
+        ) : (
+          <Text style={[debugStyles.triggerAuto, { color: theme.text }]}>🕒</Text>
+        )}
+        <Text style={[debugStyles.triggerLabel, { color: theme.text }]}>{current.label}</Text>
+        <Text style={{ color: theme.textSec, fontSize: 10 }}>▾</Text>
+      </Pressable>
+
+      <Modal
+        transparent
+        visible={open}
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+      >
+        <Pressable style={debugStyles.backdrop} onPress={() => setOpen(false)}>
+          <View
+            style={[
+              debugStyles.menu,
+              // The picker trigger lives on the RIGHT in LTR and the LEFT in
+              // RTL — pop the dropdown out from the matching side so it
+              // visually anchors to the button that opened it.
+              isRTL ? { left: 12 } : { right: 12 },
+              { backgroundColor: theme.headerBg, borderColor: darkMode ? '#4A3068' : '#E0D8E8' },
+            ]}
+          >
+            {ICON_OPTIONS.map((opt) => {
+              const active = debugIconOverride === opt.key;
+              return (
+                <Pressable
+                  key={opt.key ?? 'auto'}
+                  onPress={() => { setDebugIconOverride(opt.key); setOpen(false); }}
+                  style={({ pressed }) => [
+                    debugStyles.menuItem,
+                    active && { backgroundColor: theme.activeBg },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  {opt.src ? (
+                    <Image
+                      source={opt.src}
+                      style={[
+                        debugStyles.menuItemIcon,
+                        opt.key === 'night' && { width: 22, height: 22 },
+                      ]}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <Text style={debugStyles.menuItemEmoji}>🕒</Text>
+                  )}
+                  <Text
+                    style={[
+                      debugStyles.menuItemLabel,
+                      { color: active ? theme.tint : theme.text },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+const debugStyles = StyleSheet.create({
+  trigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 14,
+    // Horizontal margin is applied inline (RTL-aware) to anchor the trigger
+    // against whichever edge it lives next to.
+  },
+  triggerIcon: { width: 22, height: 22 },
+  triggerAuto: { fontSize: 16 },
+  triggerLabel: { fontSize: 12, fontWeight: '600' },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  menu: {
+    position: 'absolute',
+    top: 56,
+    // `left` / `right` are applied inline (RTL-aware) — not here.
+    minWidth: 160,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 6,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  menuItemIcon: { width: 26, height: 26 },
+  menuItemEmoji: { fontSize: 20 },
+  menuItemLabel: { fontSize: 14, fontWeight: '600' },
+});
 
 // ─── Drawer content ───
 function CustomDrawerContent(props: any) {
@@ -96,6 +269,7 @@ export default function RootLayout() {
   const { darkMode, language, _hasHydrated } = useCycleStore();
   const { t } = useTranslation();
   const theme = darkMode ? DARK : LIGHT;
+  const isRTL = useIsRTL();
 
   // Silent OTA check at boot — user can apply a ready update via the
   // floating UpdateIndicator without force-closing the app manually.
@@ -128,15 +302,36 @@ export default function RootLayout() {
       headerStyle: { backgroundColor: theme.headerBg, elevation: 0, shadowOpacity: 0 },
       headerTintColor: theme.tint,
       headerTitleStyle: { fontWeight: '700' as const, fontSize: 18, color: theme.text },
+      // Debug: on the "Mon Cycle" screen, expose a dropdown in the header to
+      // force any of the four greeting icons without waiting for the clock.
+      //
+      // The drawer library renders the hamburger button on whichever side
+      // `drawerPosition` points to (left by default, right in RTL). Since we
+      // set a custom header element on the SAME side, we'd displace the
+      // burger entirely. So we mount the debug picker OPPOSITE the burger:
+      //   LTR : burger left  → picker right
+      //   RTL : burger right → picker left
+      headerRight:
+        route.name === 'index' && !isRTL
+          ? () => <GreetingIconDebugPicker />
+          : undefined,
+      headerLeft:
+        route.name === 'index' && isRTL
+          ? () => <GreetingIconDebugPicker />
+          : undefined,
       drawerActiveTintColor: theme.tint,
       drawerInactiveTintColor: theme.textSec,
       drawerActiveBackgroundColor: theme.activeBg,
       drawerLabelStyle: { fontSize: 15, fontWeight: '600' as const, marginLeft: -8 },
       drawerStyle: { backgroundColor: theme.bg, width: 270 },
       drawerItemStyle: { borderRadius: 14, marginVertical: 2, paddingVertical: 2 },
+      // In RTL languages (Arabic) the drawer & burger live on the right —
+      // this is the native RTL pattern (vs. flipping the whole UI with
+      // scaleX:-1, which would also mirror text and icons).
+      drawerPosition: (isRTL ? 'right' : 'left') as 'left' | 'right',
       sceneStyle: { backgroundColor: theme.bg },
     };
-  }, [t, theme, language]);
+  }, [t, theme, language, isRTL]);
 
   // Boot progress mapping (0 → 1). The numbers are deliberately coarse
   // because we don't get real download progress from expo-updates; they
