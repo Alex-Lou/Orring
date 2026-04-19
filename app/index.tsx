@@ -258,6 +258,17 @@ export default function MyCycleScreen() {
                   // icons (tighter top-crop). A small marginTop drops it a few
                   // pixels into visual alignment with the text baseline.
                   const nightAlignFix = isNight ? { marginTop: 4 } : null;
+                  // In Arabic the "ZZZ" puff on Nuit.png reads in the wrong
+                  // direction relative to the RTL script flow. Mirror it on
+                  // the X axis so the Z's drift outward like in LTR.
+                  const rtlNightFlip =
+                    isNight && isRTL ? { transform: [{ scaleX: -1 as const }] } : null;
+                  // Nuit.png has a slightly tighter left-crop than the other
+                  // three glyphs, so even at marginLeft: 0 it still reads as
+                  // glued to the greeting text. A 3px nudge restores the
+                  // visual breathing room in LTR only (RTL stays untouched).
+                  const nightExtraGapLTR =
+                    isNight && !isRTL ? { marginLeft: 3 } : null;
                   return (
                     <Image
                       source={src}
@@ -270,7 +281,9 @@ export default function MyCycleScreen() {
                         // • LTR: push the icon ~10px to the right of the
                         //   text so it doesn't feel glued to the name.
                         isRTL ? { marginRight: -10 } : { marginLeft: 0 },
+                        nightExtraGapLTR,
                         nightAlignFix,
+                        rtlNightFlip,
                       ]}
                       resizeMode="contain"
                     />
