@@ -164,14 +164,19 @@ export function CycleRing({
   const sparklePhase = useSharedValue(0);
   // ── XP-bar shimmer layers ──────────────────────────────────────────────
   // L1 breath       — progress arc "breathes" in its own colour
-  // L2 sweep        — near-transparent sheen sliding along the filled arc
-  // L3 grain        — reads sparklePhase declared above (25 glints)
-  // L4 escape sparks — 3 particles that emerge from the arc and drift out
+  // L3 grain        — reads sparklePhase declared above (35 glints)
+  // L4 escape sparks — 5 particles that emerge from the arc and drift out
+  //
+  // An earlier iteration had an L2 "sweep" — a bright band sliding along the
+  // filled arc. Even at near-zero opacity it read as a distraction, so it
+  // was removed. All remaining layers are either stationary or radial
+  // (outward drift), never tangential motion along the bar.
   const arcBreathPhase = useSharedValue(0);
-  const sweepPhase = useSharedValue(0);
   const spark1Phase = useSharedValue(0);
   const spark2Phase = useSharedValue(0);
   const spark3Phase = useSharedValue(0);
+  const spark4Phase = useSharedValue(0);
+  const spark5Phase = useSharedValue(0);
 
   useEffect(() => {
     slidePhase.value = withRepeat(
@@ -218,14 +223,8 @@ export function CycleRing({
       -1,
       false,
     );
-    // Sweep — linear 0 → 1 loop. Each cycle, a bright band slides from
-    // the start of the filled arc to the today marker and disappears.
-    sweepPhase.value = withRepeat(
-      withTiming(1, { duration: 2800, easing: Easing.linear }),
-      -1,
-      false,
-    );
-    // Three escape-sparks, each on its own period so they emit out of sync.
+    // Five escape-sparks, each on its own period and phase offset so they
+    // emit completely out of sync. Periods spread across 700 → 1350 ms.
     spark1Phase.value = withRepeat(
       withTiming(1, { duration: 900, easing: Easing.linear }),
       -1,
@@ -243,9 +242,21 @@ export function CycleRing({
       -1,
       false,
     );
+    spark4Phase.value = 0.18;
+    spark4Phase.value = withRepeat(
+      withTiming(1, { duration: 1050, easing: Easing.linear }),
+      -1,
+      false,
+    );
+    spark5Phase.value = 0.52;
+    spark5Phase.value = withRepeat(
+      withTiming(1, { duration: 1350, easing: Easing.linear }),
+      -1,
+      false,
+    );
   }, [
     slidePhase, bobPhase, pulsePhase, bubble1Phase, bubble2Phase, sparklePhase,
-    arcBreathPhase, sweepPhase, spark1Phase, spark2Phase, spark3Phase,
+    arcBreathPhase, spark1Phase, spark2Phase, spark3Phase, spark4Phase, spark5Phase,
   ]);
 
   // Static level — the pool sits at `progress` from the very first frame.
@@ -325,17 +336,20 @@ export function CycleRing({
     : 'rgba(252, 252, 255, 0.90)';
 
   // ── XP-bar shimmer over the filled progress arc ─────────────────────────
-  // Four composable layers:
+  // Three composable layers:
   //   L1 "breath"  — the progress arc itself breathes in its own colour
   //                  (opacity + stroke width softly pulse)
-  //   L2 "sweep"   — a bright cyan band slides along the filled portion,
-  //                  reappearing at the start each cycle
-  //   L3 "grain"   — 25 small cyan sparkles distributed with pseudo-random
+  //   L3 "grain"   — 35 small cyan sparkles distributed with pseudo-random
   //                  phase offsets, producing a continuous glitter-grain
-  //   L4 "escape"  — 3 particles that emerge from the arc, drift outward
+  //   L4 "escape"  — 5 particles that emerge from the arc, drift outward
   //                  by a few pixels and fade — the "magical overflow"
   //
-  // All layers are theme-aware and strictly confined to the filled arc.
+  // An earlier iteration had an L2 "sweep" (bright band sliding along the
+  // filled arc). Removed: the tangential motion read as distracting even
+  // at very low alpha. Layer numbering preserved for readability.
+  //
+  // All remaining layers are theme-aware and strictly confined to the
+  // filled arc.
   const showSparkles = progress > 0.03;
 
   // Shared cyan palette for all shimmer layers. Dark mode gets saturated
@@ -346,12 +360,6 @@ export function CycleRing({
   const haloColor = darkMode
     ? 'rgba(126, 228, 255, 0.32)' // cyan bloom on dark
     : 'rgba(95, 195, 215, 0.30)'; // teal bloom on light
-  // Sweep colour — ghosted. The sweep should register as a subtle sheen
-  // traveling along the arc, not a headlight. Base alpha is already low;
-  // the animated opacity multiplier below drops it further at the edges.
-  const sweepColor = darkMode
-    ? 'rgba(200, 248, 255, 1)'
-    : 'rgba(150, 225, 240, 1)';
 
   // L1 — arc breath. Rendered as a second stroke over the progress arc,
   // slightly wider and at variable opacity. Uses progressColor so the
@@ -366,35 +374,10 @@ export function CycleRing({
     } as any;
   });
 
-  // L2 — sweep. A short bright dash traveling along the filled arc.
-  // strokeDasharray = [sweepLen, circumference] keeps exactly one dash
-  // visible. strokeDashoffset slides it; opacity fades at the edges so
-  // it never bleeds past the today marker.
-  const sweepLen = Math.max(28, progress * circumference * 0.22);
-  const sweepAnimatedProps = useAnimatedProps(() => {
-    'worklet';
-    const t = sweepPhase.value; // 0..1
-    const filledLen = progress * circumference;
-    // Dash head (leading edge) starts just before 0 and ends just past filledLen.
-    const travel = filledLen + sweepLen * 2;
-    const dashStart = t * travel - sweepLen;
-    // Opacity based on how much of the dash overlaps the filled region.
-    const overlapStart = Math.max(0, dashStart);
-    const overlapEnd = Math.min(filledLen, dashStart + sweepLen);
-    const overlap = Math.max(0, overlapEnd - overlapStart);
-    const ratio = overlap / sweepLen;
-    return {
-      strokeDashoffset: -dashStart,
-      // Ghosted pass: peak alpha ~0.12. The motion reads as a faint sheen
-      // instead of commanding visual attention.
-      opacity: 0.12 * ratio,
-    } as any;
-  });
-
-  // L3 — grain. 25 small cyan glints with pseudo-random phase offsets
+  // L3 — grain. 35 small cyan glints with pseudo-random phase offsets
   // (hash-derived so positions & brightness look randomized without
-  // needing a seeded RNG). Smaller than before, denser distribution.
-  const SPARKLE_COUNT = 25;
+  // needing a seeded RNG). Denser than before for a richer glitter.
+  const SPARKLE_COUNT = 35;
   const ARC_START = 0.04;
   const ARC_END = 0.96;
 
@@ -442,14 +425,16 @@ export function CycleRing({
     return { d } as any;
   });
 
-  // L4 — escape sparks. 3 animated circles that emerge from a fixed
+  // L4 — escape sparks. 5 animated circles that emerge from a fixed
   // arc fraction, drift outward ~5.5 px and fade in+out via a sin curve.
-  // Each has its own period so the three particles never pulse together.
+  // Each has its own period so the five particles never pulse together.
   // useAnimatedProps is called at the top level for each, keeping hook
   // order stable across renders.
-  const SPARK1_ARC = 0.22;
-  const SPARK2_ARC = 0.55;
-  const SPARK3_ARC = 0.82;
+  const SPARK1_ARC = 0.15;
+  const SPARK2_ARC = 0.38;
+  const SPARK3_ARC = 0.58;
+  const SPARK4_ARC = 0.74;
+  const SPARK5_ARC = 0.90;
 
   const spark1Props = useAnimatedProps(() => {
     'worklet';
@@ -477,6 +462,28 @@ export function CycleRing({
     'worklet';
     const t = spark3Phase.value;
     const angle = -Math.PI / 2 + progress * SPARK3_ARC * 2 * Math.PI;
+    const outward = t * 5.5;
+    return {
+      cx: cx + (radius + outward) * Math.cos(angle),
+      cy: cy + (radius + outward) * Math.sin(angle),
+      opacity: Math.sin(t * Math.PI) * 0.9,
+    } as any;
+  });
+  const spark4Props = useAnimatedProps(() => {
+    'worklet';
+    const t = spark4Phase.value;
+    const angle = -Math.PI / 2 + progress * SPARK4_ARC * 2 * Math.PI;
+    const outward = t * 5.5;
+    return {
+      cx: cx + (radius + outward) * Math.cos(angle),
+      cy: cy + (radius + outward) * Math.sin(angle),
+      opacity: Math.sin(t * Math.PI) * 0.9,
+    } as any;
+  });
+  const spark5Props = useAnimatedProps(() => {
+    'worklet';
+    const t = spark5Phase.value;
+    const angle = -Math.PI / 2 + progress * SPARK5_ARC * 2 * Math.PI;
     const outward = t * 5.5;
     return {
       cx: cx + (radius + outward) * Math.cos(angle),
@@ -574,25 +581,7 @@ export function CycleRing({
           />
         )}
 
-        {/* L2 — sweep. Bright cyan band traveling along the filled arc, but
-            at near-transparent alpha so the motion is felt as a subtle sheen
-            rather than demanding attention. */}
-        {showSparkles && (
-          <AnimatedCircle
-            cx={cx}
-            cy={cy}
-            r={radius}
-            stroke={sweepColor}
-            strokeWidth={strokeWidth * 0.72}
-            fill="none"
-            strokeDasharray={`${sweepLen},${circumference}`}
-            strokeLinecap="round"
-            transform={`rotate(-90 ${cx} ${cy})`}
-            animatedProps={sweepAnimatedProps}
-          />
-        )}
-
-        {/* L3 — grain. 25 small cyan glints with pseudo-random phase offsets.
+        {/* L3 — grain. 35 small cyan glints with pseudo-random phase offsets.
             Halo first (low alpha bloom) then cores on top. Two draw calls. */}
         {showSparkles && (
           <>
@@ -609,12 +598,14 @@ export function CycleRing({
           </>
         )}
 
-        {/* L4 — escape sparks. Three particles drifting outward from the arc. */}
+        {/* L4 — escape sparks. Five particles drifting outward from the arc. */}
         {showSparkles && (
           <>
             <AnimatedCircle r={1.6} fill={coreColor} animatedProps={spark1Props} />
             <AnimatedCircle r={1.6} fill={coreColor} animatedProps={spark2Props} />
             <AnimatedCircle r={1.6} fill={coreColor} animatedProps={spark3Props} />
+            <AnimatedCircle r={1.6} fill={coreColor} animatedProps={spark4Props} />
+            <AnimatedCircle r={1.6} fill={coreColor} animatedProps={spark5Props} />
           </>
         )}
 
