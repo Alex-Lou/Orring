@@ -8,12 +8,14 @@ import { generateCycleHistory, CycleHistoryEntry, formatDateFr } from '../src/ut
 import { useCycleStore } from '../src/store/cycleStore';
 import { useTheme } from '../src/theme/useTheme';
 import { useTranslation } from 'react-i18next';
+import { useIsRTL } from '../src/i18n/useIsRTL';
 
 export default function HistoryScreen() {
   const { firstInsertDate, cycleLogs, periodLogs, clearHistory, deleteCycleLogsBetween, setRingStatus } = useCycleStore();
   const [historyOpen, setHistoryOpen] = useState(true);
   const [previsionsOpen, setPrevisionsOpen] = useState(false);
   const { t } = useTranslation();
+  const isRTL = useIsRTL();
   const theme = useTheme();
 
   const { past, future } = useMemo(() => {
@@ -29,8 +31,12 @@ export default function HistoryScreen() {
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
         <View style={[styles.headerBox, { paddingHorizontal: spacing.lg }]}>
-          <View style={styles.titleRow}>
-            <Image source={require('../assets/OrringBluePetNoBgSalute.png')} style={styles.titlePet} resizeMode="contain" />
+          <View style={[styles.titleRow, isRTL && styles.rtlRow]}>
+            <Image
+              source={require('../assets/OrringBluePetNoBgSalute.png')}
+              style={[styles.titlePet, isRTL && { transform: [{ scaleX: -1 }] }]}
+              resizeMode="contain"
+            />
             <Text style={[styles.title, { color: theme.text }]}>{t('history')}</Text>
           </View>
         </View>
@@ -46,9 +52,13 @@ export default function HistoryScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInDown.duration(600).springify()} style={styles.headerBox}>
-          <View style={styles.headerRow}>
-            <View style={styles.titleRow}>
-              <Image source={require('../assets/OrringBluePetNoBgSalute.png')} style={styles.titlePet} resizeMode="contain" />
+          <View style={[styles.headerRow, isRTL && styles.rtlRow]}>
+            <View style={[styles.titleRow, isRTL && styles.rtlRow]}>
+              <Image
+              source={require('../assets/OrringBluePetNoBgSalute.png')}
+              style={[styles.titlePet, isRTL && { transform: [{ scaleX: -1 }] }]}
+              resizeMode="contain"
+            />
               <Text style={[styles.title, { color: theme.text }]}>{t('history')}</Text>
             </View>
             {cycleLogs.length > 0 && (
@@ -68,11 +78,11 @@ export default function HistoryScreen() {
         {/* Historique section — collapsible */}
         {past.length > 0 && (
           <>
-            <Pressable onPress={() => setHistoryOpen(!historyOpen)} style={[styles.sectionHeader, { borderBottomColor: theme.border }]}>
+            <Pressable onPress={() => setHistoryOpen(!historyOpen)} style={[styles.sectionHeader, isRTL && styles.rtlRow, { borderBottomColor: theme.border }]}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                {historyOpen ? '▼' : '▶'} 📖 {t('history')}
+                {historyOpen ? '▼' : (isRTL ? '◀' : '▶')} 📖 {t('history')}
               </Text>
-              <Text style={[styles.sectionCount, { color: theme.textSecondary }]}>{past.length} cycle{past.length > 1 ? 's' : ''}</Text>
+              <Text style={[styles.sectionCount, { color: theme.textSecondary }]}>{t('cycleCount', { count: past.length })}</Text>
             </Pressable>
             {historyOpen && past.map((entry, index) => (
               <Animated.View key={entry.cycleNumber} entering={FadeInUp.delay(index * 50).duration(300)}>
@@ -120,11 +130,11 @@ export default function HistoryScreen() {
         {/* Prévisions section — collapsible */}
         {future.length > 0 && (
           <>
-            <Pressable onPress={() => setPrevisionsOpen(!previsionsOpen)} style={[styles.sectionHeader, { borderBottomColor: theme.border }]}>
+            <Pressable onPress={() => setPrevisionsOpen(!previsionsOpen)} style={[styles.sectionHeader, isRTL && styles.rtlRow, { borderBottomColor: theme.border }]}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                {previsionsOpen ? '▼' : '▶'} 🔮 {t('predictions')}
+                {previsionsOpen ? '▼' : (isRTL ? '◀' : '▶')} 🔮 {t('predictions')}
               </Text>
-              <Text style={[styles.sectionCount, { color: theme.textSecondary }]}>{future.length} cycle{future.length > 1 ? 's' : ''}</Text>
+              <Text style={[styles.sectionCount, { color: theme.textSecondary }]}>{t('cycleCount', { count: future.length })}</Text>
             </Pressable>
             {previsionsOpen && future.map((entry, index) => (
               <Animated.View key={entry.cycleNumber} entering={FadeInUp.delay(index * 50).duration(300)}>
@@ -146,6 +156,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: fontSize.xxl, fontWeight: fontWeight.black, color: colors.text, letterSpacing: -0.5 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rtlRow: { flexDirection: 'row-reverse' },
   titlePet: { width: 42, height: 42 },
   clearBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: borderRadius.full, backgroundColor: '#FDE8E8' },
   clearText: { fontSize: fontSize.xs, color: '#C62828', fontWeight: fontWeight.semibold },

@@ -9,6 +9,7 @@ import { formatDateFr, formatDateTimeFr, getCycleInfoFromLogs } from '../src/uti
 import { addDays, subDays } from 'date-fns';
 import { useTheme } from '../src/theme/useTheme';
 import { useTranslation } from 'react-i18next';
+import { useIsRTL } from '../src/i18n/useIsRTL';
 
 export default function SettingsScreen() {
   const {
@@ -34,6 +35,7 @@ export default function SettingsScreen() {
 
   const theme = useTheme();
   const { t } = useTranslation();
+  const isRTL = useIsRTL();
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState<Date>(
     firstInsertDate ? new Date(firstInsertDate) : new Date()
@@ -69,18 +71,22 @@ export default function SettingsScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInDown.duration(600)}>
-          <View style={styles.titleRow}>
-            <Image source={require('../assets/OrringBluePetNoBgSalute.png')} style={styles.titlePet} resizeMode="contain" />
+          <View style={[styles.titleRow, isRTL && styles.rtlRow]}>
+            <Image
+              source={require('../assets/OrringBluePetNoBgSalute.png')}
+              style={[styles.titlePet, isRTL && { transform: [{ scaleX: -1 }] }]}
+              resizeMode="contain"
+            />
             <Text style={[styles.title, { color: theme.text }]}>{t('settings')}</Text>
           </View>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{t('configureTracking')}</Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }, isRTL && styles.rtlText]}>{t('configureTracking')}</Text>
         </Animated.View>
 
         {/* Nom de l'utilisatrice */}
         <Animated.View entering={FadeInUp.delay(150).duration(500)}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('userNameLabel')}</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }, isRTL && styles.rtlText]}>{t('userNameLabel')}</Text>
           <View style={[styles.card, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.cardDesc, { color: theme.textSecondary }]}>
+            <Text style={[styles.cardDesc, { color: theme.textSecondary }, isRTL && styles.rtlText]}>
               {t('userNameDesc')}
             </Text>
             {editingName ? (
@@ -109,10 +115,10 @@ export default function SettingsScreen() {
             ) : (
               <Pressable
                 onPress={() => { setNameDraft(userName || ''); setEditingName(true); }}
-                style={[styles.setDateBtn, { backgroundColor: theme.primarySoft }]}
+                style={[styles.setDateBtn, isRTL && styles.rtlRow, { backgroundColor: theme.primarySoft }]}
               >
                 <Text style={styles.setDateIcon}>👤</Text>
-                <Text style={[styles.setDateText, { color: theme.text }]}>
+                <Text style={[styles.setDateText, { color: theme.text }, isRTL && styles.rtlText]}>
                   {userName || t('userNameNone')}
                 </Text>
                 <Text style={{ color: theme.primaryDark, fontSize: fontSize.sm, fontWeight: '700' }}>{t('edit')}</Text>
@@ -123,14 +129,14 @@ export default function SettingsScreen() {
 
         {/* Date de début */}
         <Animated.View entering={FadeInUp.delay(200).duration(500)}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('referenceDate')}</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }, isRTL && styles.rtlText]}>{t('referenceDate')}</Text>
           <View style={[styles.card, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.cardDesc, { color: theme.textSecondary }]}>
+            <Text style={[styles.cardDesc, { color: theme.textSecondary }, isRTL && styles.rtlText]}>
               {t('referenceDateDescFull')}
             </Text>
-            <View style={[styles.setDateBtn, { backgroundColor: theme.primarySoft }]}>
+            <View style={[styles.setDateBtn, isRTL && styles.rtlRow, { backgroundColor: theme.primarySoft }]}>
               <Text style={styles.setDateIcon}>📅</Text>
-              <Text style={[styles.setDateText, { color: theme.text }]}>
+              <Text style={[styles.setDateText, { color: theme.text }, isRTL && styles.rtlText]}>
                 {firstInsertDate ? formatDateTimeFr(new Date(firstInsertDate)) : t('notConfigured')}
               </Text>
             </View>
@@ -139,12 +145,12 @@ export default function SettingsScreen() {
 
         {/* Statut anneau */}
         <Animated.View entering={FadeInUp.delay(250).duration(500)}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('ringStatus')}</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }, isRTL && styles.rtlText]}>{t('ringStatus')}</Text>
           <View style={[styles.card, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.cardDesc, { color: theme.textSecondary }]}>
+            <Text style={[styles.cardDesc, { color: theme.textSecondary }, isRTL && styles.rtlText]}>
               {t('ringStatusDescFull')}
             </Text>
-            <View style={styles.ringStatusRow}>
+            <View style={[styles.ringStatusRow, isRTL && styles.rtlRow]}>
               <Pressable
                 style={[
                   styles.statusBtn,
@@ -173,12 +179,12 @@ export default function SettingsScreen() {
 
         {/* Notifications */}
         <Animated.View entering={FadeInUp.delay(300).duration(500)}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('notifications')}</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }, isRTL && styles.rtlText]}>{t('notifications')}</Text>
           <View style={[styles.card, { backgroundColor: theme.surface }]}>
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>{t('remindersEnabled')}</Text>
-                <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>{t('remindersDescFull')}</Text>
+            <View style={[styles.settingRow, isRTL && styles.rtlRow]}>
+              <View style={[styles.settingInfo, isRTL && { marginRight: 0, marginLeft: spacing.md }]}>
+                <Text style={[styles.settingLabel, { color: theme.text }, isRTL && styles.rtlText]}>{t('remindersEnabled')}</Text>
+                <Text style={[styles.settingDesc, { color: theme.textSecondary }, isRTL && styles.rtlText]}>{t('remindersDescFull')}</Text>
               </View>
               <Switch
                 value={notificationsEnabled}
@@ -189,8 +195,8 @@ export default function SettingsScreen() {
             </View>
             {notificationsEnabled && (
               <View style={[styles.timeRow, { borderTopColor: theme.border }]}>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>{t('reminderHour')}</Text>
-                <View style={styles.timeButtons}>
+                <Text style={[styles.settingLabel, { color: theme.text }, isRTL && styles.rtlText]}>{t('reminderHour')}</Text>
+                <View style={[styles.timeButtons, isRTL && styles.rtlRow]}>
                   {[7, 8, 9, 10, 20, 21].map((hour) => (
                     <Pressable
                       key={hour}
@@ -210,9 +216,9 @@ export default function SettingsScreen() {
 
         {/* About */}
         <Animated.View entering={FadeInUp.delay(400).duration(500)}>
-          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('about')}</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }, isRTL && styles.rtlText]}>{t('about')}</Text>
           <View style={[styles.card, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.aboutCycle, { color: theme.text, backgroundColor: theme.primarySoft }]}>
+            <Text style={[styles.aboutCycle, { color: theme.text, backgroundColor: theme.primarySoft }, isRTL && styles.rtlText]}>
               {t('aboutText')}
             </Text>
           </View>
@@ -235,6 +241,8 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: spacing.xxl },
   title: { fontSize: fontSize.xxl, fontWeight: fontWeight.bold, color: colors.text },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rtlRow: { flexDirection: 'row-reverse' },
+  rtlText: { textAlign: 'right', writingDirection: 'rtl' },
   titlePet: { width: 42, height: 42 },
   subtitle: { fontSize: fontSize.md, color: colors.textSecondary, marginTop: 4, marginBottom: spacing.lg },
 
@@ -251,9 +259,9 @@ const styles = StyleSheet.create({
   // Date picker
   setDateBtn: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primarySoft,
-    borderRadius: borderRadius.lg, padding: spacing.md,
+    borderRadius: borderRadius.lg, padding: spacing.md, gap: spacing.sm,
   },
-  setDateIcon: { fontSize: 20, marginRight: spacing.sm },
+  setDateIcon: { fontSize: 20 },
   setDateText: { flex: 1, fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text, textTransform: 'capitalize' },
   setDateArrow: { fontSize: 24, color: colors.primaryDark },
 

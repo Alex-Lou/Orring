@@ -48,6 +48,10 @@ interface CycleData {
   // Timer retrait temporaire (<3h)
   tempRemovalStart: string | null; // ISO timestamp
   tempRemovalNotify: boolean;      // notif à +3h activée ou non
+  // DEBUG: force a specific greeting icon for testing. `null` = auto (by
+  // current time). Intentionally excluded from the persist partialize so it
+  // resets to null on every app boot.
+  debugIconOverride: 'morning' | 'sun' | 'sunset' | 'night' | null;
 }
 
 interface CycleActions {
@@ -71,6 +75,7 @@ interface CycleActions {
   startTempRemoval: (notify: boolean) => void;
   cancelTempRemoval: () => void;
   setTempRemovalNotify: (v: boolean) => void;
+  setDebugIconOverride: (v: CycleData['debugIconOverride']) => void;
   clearHistory: () => void;
   deleteCycleLog: (id: string) => void;
   deleteCycleLogsBetween: (startMs: number, endMs: number) => void;
@@ -99,6 +104,7 @@ const INITIAL_DATA: CycleData = {
   hasOnboarded: false,
   tempRemovalStart: null,
   tempRemovalNotify: true,
+  debugIconOverride: null,
 };
 
 // ─── Store with persist middleware (AsyncStorage) ───
@@ -230,6 +236,8 @@ export const useCycleStore = create<CycleState>()(
           cancelTempRemovalNotif().catch(() => {});
         }
       },
+
+      setDebugIconOverride: (v) => set({ debugIconOverride: v }),
 
       clearHistory: () => set({
         cycleLogs: [],

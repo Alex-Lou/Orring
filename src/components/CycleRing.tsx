@@ -192,13 +192,13 @@ export function CycleRing({
       -1,
       false,
     );
-    // Sparkle master phase — a single linear 0 → 2π loop. Each sparkle
-    // multiplies this by its own rate + adds a phase offset, so the final
-    // rhythms are all different (not just shifted copies). Base period
-    // chosen so the *slowest* sparkle (rate 0.85) still flashes roughly
-    // every 3s, while faster ones (rate 1.5) pop ~1.7s apart.
+    // Sparkle master phase — a single linear 0 → 2π loop. Every static
+    // sparkle reads from this value + its own index-based phase offset,
+    // producing a soft wave of brightness that ripples along the row
+    // instead of a synchronized all-on/all-off pulse. 4 s period keeps the
+    // shimmer gentle (calling it "scintillant" not "clignotant").
     sparklePhase.value = withRepeat(
-      withTiming(2 * Math.PI, { duration: 2600, easing: Easing.linear }),
+      withTiming(2 * Math.PI, { duration: 4000, easing: Easing.linear }),
       -1,
       false,
     );
@@ -280,99 +280,82 @@ export function CycleRing({
     ? 'rgba(225, 245, 230, 0.75)'
     : 'rgba(252, 252, 255, 0.90)';
 
-  // ── Flowing paillette stream on the filled progress arc ─────────────────
-  // Six glints TRAVEL along the already-filled portion of the ring — each
-  // is born at arc fraction ~0.05, glides to ~0.88, and dies there. A
-  // per-glint rate + phase offset means at any moment the six are scattered
-  // at different points along the travel, so the eye sees a continuous
-  // sparkle stream rather than a grid of blinking dots.
+  // ── Cyan shimmer line on the filled progress arc ────────────────────────
+  // A row of 10 static sparkle positions evenly distributed along the
+  // already-filled arc (from 5% to 88% of it — never past the today marker).
+  // Each position breathes smoothly via a sinusoidal opacity+radius curve,
+  // with a per-position phase offset so the shimmer ripples along the row
+  // like a soft wave. No travel, no shooting stars — just a luminous line
+  // of cyan glints that twinkle in place.
   //
-  // Shape: each glint is a 4-point star (horizontal + vertical rays) with
-  // a soft circular halo underneath. Ray length and halo radius both breathe
-  // via a sin(πt) life curve — born invisible, peak at mid-travel, die
-  // invisible before wrapping. That hides the reset and reads as "glitter
-  // flowing downstream" instead of "lights turning on and off".
-  //
-  // CONFINEMENT: the angle formula `-π/2 + progress · arcFrac · 2π` uses
-  // a fraction OF THE FILLED ARC (arcFrac ∈ [0.05, 0.88]). Nothing is ever
-  // drawn past the today marker — the unfilled tail is untouched.
+  // GLOW: each sparkle is rendered as two overlaid filled circles — a
+  // large low-alpha cyan halo and a small high-alpha cyan core. The halo
+  // breathes wider than the core, creating a soft bloom around every glint
+  // that reads as "luminous" rather than "flat dot".
   //
   // THEME:
-  //   DARK : pure-white rays, soft white halo — crystalline stars on dark
-  //   LIGHT: warm champagne rays, peachy halo — golden shimmer on periwinkle
+  //   DARK : saturated neon cyan — pops on green (ringIn) or purple (ringOut)
+  //   LIGHT: cooler teal-cyan — toned down so the shimmer doesn't burn out
+  //          on the lighter periwinkle arc.
   //
-  // RENDERING: one AnimatedPath for all halos (fills), one for all rays
-  // (stroke). The `d` string is rebuilt on the UI thread every frame from
-  // sparklePhase.value — two native draw calls total, regardless of glint
-  // count. Six glints × small trig = trivial cost per frame.
+  // RENDERING: two AnimatedPaths. Each frame the worklet rebuilds the `d`
+  // string with all 10 circles concatenated. Two native draw calls, 10
+  // glints of work on the UI thread.
   const showSparkles = progress > 0.03;
-  const rayColor = darkMode
-    ? 'rgba(255, 255, 255, 1)'
-    : 'rgba(255, 246, 225, 1)';
+  const coreColor = darkMode
+    ? 'rgba(170, 244, 255, 0.98)' // bright neon cyan
+    : 'rgba(110, 210, 225, 0.92)'; // softer teal
   const haloColor = darkMode
-    ? 'rgba(255, 255, 255, 0.28)'
-    : 'rgba(255, 225, 185, 0.45)';
-  const rayStrokeWidth = darkMode ? 1.3 : 1.6;
-  const glintSizeScale = darkMode ? 1.0 : 1.15;
+    ? 'rgba(126, 228, 255, 0.32)' // cyan bloom on dark
+    : 'rgba(95, 195, 215, 0.30)'; // teal bloom on light
 
-  // Per-glint travel rate multiplier (final period = 2600ms / rate), phase
-  // offset (breaks up synchronization), and base size. Six irregular values
-  // → no grid-feel; arrays of plain numbers close over cleanly in worklets.
-  const SPARKLE_RATES = [1.00, 0.82, 1.28, 1.12, 0.94, 1.38];
-  const SPARKLE_OFFSETS = [0.00, 1.15, 2.35, 3.60, 4.75, 5.82];
-  const SPARKLE_SIZES = [1.00, 1.30, 0.85, 1.15, 0.95, 1.10];
+  const SPARKLE_COUNT = 10;
   const ARC_START = 0.05;
   const ARC_END = 0.88;
-  const ARC_RANGE = ARC_END - ARC_START;
+  // Phase-offset step that puts ~0.7 radians between adjacent glints.
+  // Over 10 glints that's a ~230° sweep of the sine — visibly a wave,
+  // still gentle enough to keep the whole row glowing at all times.
+  const PHASE_STEP = 0.72;
 
-  const raysPathProps = useAnimatedProps(() => {
+  const corePathProps = useAnimatedProps(() => {
     'worklet';
     let d = '';
-    for (let i = 0; i < 6; i++) {
-      // Travel phase t ∈ [0,1) — fractional part of phase * rate + offset.
-      const raw = (sparklePhase.value * SPARKLE_RATES[i] + SPARKLE_OFFSETS[i]) / (2 * Math.PI);
-      const t = raw - Math.floor(raw);
-      const arcFrac = ARC_START + t * ARC_RANGE;
-      const angle = -Math.PI / 2 + progress * arcFrac * 2 * Math.PI;
+    for (let i = 0; i < SPARKLE_COUNT; i++) {
+      // Static position — even spacing across the filled arc.
+      const frac = ARC_START + (i / (SPARKLE_COUNT - 1)) * (ARC_END - ARC_START);
+      const angle = -Math.PI / 2 + progress * frac * 2 * Math.PI;
       const x = cx + radius * Math.cos(angle);
       const y = cy + radius * Math.sin(angle);
-      // Life curve — sin(πt) births and dies at 0, peaks at t=0.5.
-      // Squaring makes the peak sharper (more "flash" than "bulge").
-      const life = Math.sin(t * Math.PI);
-      const sharp = life * life;
-      const r = 4.5 * SPARKLE_SIZES[i] * glintSizeScale * sharp;
-      if (r < 0.4) continue;
-      // 4-point star: horizontal + vertical rays crossing at (x,y)
-      d += 'M' + (x - r).toFixed(1) + ' ' + y.toFixed(1) +
-           ' L' + (x + r).toFixed(1) + ' ' + y.toFixed(1) + ' ';
-      d += 'M' + x.toFixed(1) + ' ' + (y - r).toFixed(1) +
-           ' L' + x.toFixed(1) + ' ' + (y + r).toFixed(1) + ' ';
+      // Smooth breathing — shimmer ∈ [0.35, 1.00], never fully off.
+      const shimmer = 0.675 + 0.325 * Math.sin(sparklePhase.value + i * PHASE_STEP);
+      const r = 1.35 + shimmer * 1.4; // 1.35 → 2.75 px
+      d += 'M' + (x + r).toFixed(2) + ' ' + y.toFixed(2) +
+           ' A' + r.toFixed(2) + ' ' + r.toFixed(2) + ' 0 1 0 ' +
+           (x - r).toFixed(2) + ' ' + y.toFixed(2) +
+           ' A' + r.toFixed(2) + ' ' + r.toFixed(2) + ' 0 1 0 ' +
+           (x + r).toFixed(2) + ' ' + y.toFixed(2) + ' Z ';
     }
     return { d } as any;
   });
 
-  const halosPathProps = useAnimatedProps(() => {
+  const haloPathProps = useAnimatedProps(() => {
     'worklet';
     let d = '';
-    for (let i = 0; i < 6; i++) {
-      const raw = (sparklePhase.value * SPARKLE_RATES[i] + SPARKLE_OFFSETS[i]) / (2 * Math.PI);
-      const t = raw - Math.floor(raw);
-      const arcFrac = ARC_START + t * ARC_RANGE;
-      const angle = -Math.PI / 2 + progress * arcFrac * 2 * Math.PI;
+    for (let i = 0; i < SPARKLE_COUNT; i++) {
+      const frac = ARC_START + (i / (SPARKLE_COUNT - 1)) * (ARC_END - ARC_START);
+      const angle = -Math.PI / 2 + progress * frac * 2 * Math.PI;
       const x = cx + radius * Math.cos(angle);
       const y = cy + radius * Math.sin(angle);
-      const life = Math.sin(t * Math.PI);
-      // Halo uses the non-sharpened life curve so it's a soft glow that
-      // fades in earlier and lingers longer than the rays — the eye sees
-      // a warm bloom that grows a sharp star in its middle.
-      const r = 4.2 * SPARKLE_SIZES[i] * glintSizeScale * life;
-      if (r < 0.4) continue;
-      // Full circle as two 180° arcs.
-      d += 'M' + (x + r).toFixed(1) + ' ' + y.toFixed(1) +
-           ' A' + r.toFixed(1) + ' ' + r.toFixed(1) + ' 0 1 0 ' +
-           (x - r).toFixed(1) + ' ' + y.toFixed(1) +
-           ' A' + r.toFixed(1) + ' ' + r.toFixed(1) + ' 0 1 0 ' +
-           (x + r).toFixed(1) + ' ' + y.toFixed(1) + ' Z ';
+      // Halo breathes WIDER than the core (larger swing) so the glow
+      // pulses visibly around a steadier bright dot — the eye reads this
+      // as luminosity rather than a ring that grows & shrinks.
+      const shimmer = 0.55 + 0.45 * Math.sin(sparklePhase.value + i * PHASE_STEP);
+      const r = 3.2 + shimmer * 3.2; // 3.2 → 6.4 px — much bigger than core
+      d += 'M' + (x + r).toFixed(2) + ' ' + y.toFixed(2) +
+           ' A' + r.toFixed(2) + ' ' + r.toFixed(2) + ' 0 1 0 ' +
+           (x - r).toFixed(2) + ' ' + y.toFixed(2) +
+           ' A' + r.toFixed(2) + ' ' + r.toFixed(2) + ' 0 1 0 ' +
+           (x + r).toFixed(2) + ' ' + y.toFixed(2) + ' Z ';
     }
     return { d } as any;
   });
@@ -447,23 +430,21 @@ export function CycleRing({
           transform={`rotate(-90 ${cx} ${cy})`}
         />
 
-        {/* Paillette stream — halos (soft bloom) under rays (4-point star).
-            Both paths are rebuilt every frame on the UI thread, confined to
-            the filled portion of the arc, and drawn in a single native call
-            per layer. */}
+        {/* Cyan shimmer line — soft halo bloom under bright cyan cores.
+            Both paths are rebuilt every frame on the UI thread, strictly
+            confined to the filled portion of the arc. Two native draw
+            calls total, 10 glints each. */}
         {showSparkles && (
           <>
             <AnimatedPath
-              animatedProps={halosPathProps}
+              animatedProps={haloPathProps}
               fill={haloColor}
               stroke="none"
             />
             <AnimatedPath
-              animatedProps={raysPathProps}
-              stroke={rayColor}
-              strokeWidth={rayStrokeWidth}
-              strokeLinecap="round"
-              fill="none"
+              animatedProps={corePathProps}
+              fill={coreColor}
+              stroke="none"
             />
           </>
         )}

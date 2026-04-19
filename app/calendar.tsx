@@ -12,6 +12,7 @@ import { useCycleStore } from '../src/store/cycleStore';
 import type { DayMark } from '../src/store/cycleStore';
 import { useTheme } from '../src/theme/useTheme';
 import { useTranslation } from 'react-i18next';
+import { useIsRTL } from '../src/i18n/useIsRTL';
 
 function toDateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -20,6 +21,7 @@ function toDateKey(d: Date): string {
 export default function CalendarScreen() {
   const { firstInsertDate, periodLogs, dayNotes, saveDayNote, deleteDayNote, insertRing, removeRing, cycleLogs, ringStatus } = useCycleStore();
   const { t } = useTranslation();
+  const isRTL = useIsRTL();
   const { width } = useWindowDimensions();
   const [selectedMonth, setSelectedMonth] = useState<{ year: number; month: number } | null>(null);
   const [editingDay, setEditingDay] = useState<CycleDay | null>(null);
@@ -79,10 +81,17 @@ export default function CalendarScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInDown.duration(600).springify()}>
-          <View style={styles.titleRow}>
+          <View style={[styles.titleRow, isRTL && styles.rtlRow]}>
             <Image
               source={require('../assets/OrringBluePetNoBgSalute.png')}
-              style={styles.titlePet}
+              style={[
+                styles.titlePet,
+                // In LTR the bird sits on the LEFT of the title and points
+                // right (natural pose) toward the text. In RTL row-reverse
+                // puts it visually on the right of the title, so we flip it
+                // so it still points AT the title.
+                isRTL && { transform: [{ scaleX: -1 }] },
+              ]}
               resizeMode="contain"
             />
             <Text style={[styles.title, { color: theme.text }]}>{t('calendar')}</Text>
@@ -182,6 +191,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, paddingTop: spacing.md },
 
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rtlRow: { flexDirection: 'row-reverse' },
   titlePet: {
     width: 42,
     height: 42,

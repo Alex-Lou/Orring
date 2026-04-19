@@ -236,11 +236,20 @@ function CustomDrawerContent(props: any) {
         </View>
       </Pressable>
 
-      {/* Language selector — dropdown */}
+      {/* Language selector — dropdown.
+          Flag and label are split into SEPARATE <Text> nodes because on some
+          Android devices the French flag emoji (🇫🇷, composed of regional-
+          indicator pair F+R) renders wider than expected and visually eats
+          the following label when they share a Text. Two Text nodes with an
+          explicit gap give each its own bounding box — the label always
+          shows regardless of how the flag glyph decides to render. */}
       <Pressable onPress={() => setLangOpen(!langOpen)} style={styles.drawerOption}>
-        <Text style={[styles.drawerOptionText, { color: theme.text }]}>
-          {currentLang.flag} {currentLang.label}
-        </Text>
+        <View style={styles.drawerLangRow}>
+          <Text style={styles.drawerLangFlag}>{currentLang.flag}</Text>
+          <Text style={[styles.drawerLangLabel, { color: theme.text }]}>
+            {currentLang.label}
+          </Text>
+        </View>
         <Text style={{ color: theme.textSec }}>{langOpen ? '▲' : '▼'}</Text>
       </Pressable>
 
@@ -263,7 +272,6 @@ function CustomDrawerContent(props: any) {
 }
 
 // ─── Root Layout ───
-const MIN_SPLASH_MS = 1100;
 
 export default function RootLayout() {
   const { darkMode, language, _hasHydrated } = useCycleStore();
@@ -274,15 +282,6 @@ export default function RootLayout() {
   // Silent OTA check at boot — user can apply a ready update via the
   // floating UpdateIndicator without force-closing the app manually.
   const { status: updateStatus, isSettled: updateSettled, applyUpdate } = useExpoUpdates();
-
-  // Guarantees the splash stays visible for MIN_SPLASH_MS even on a very
-  // fast boot — avoids a jarring flash when hydration + OTA check finish
-  // in < 200 ms.
-  const [minTimeElapsed, setMinTimeElapsed] = useState(false);
-  useEffect(() => {
-    const tm = setTimeout(() => setMinTimeElapsed(true), MIN_SPLASH_MS);
-    return () => clearTimeout(tm);
-  }, []);
 
   useEffect(() => {
     requestNotificationPermissions().catch(() => {});
@@ -347,7 +346,14 @@ export default function RootLayout() {
   if (_hasHydrated && updateSettled) progress = finishedFloor;
   else if (_hasHydrated && (updateStatus === 'checking' || updateStatus === 'downloading')) progress = Math.max(progress, checkedFloor);
 
-  const ready = _hasHydrated && updateSettled && minTimeElapsed;
+  // Double-splash was redundant: the native Android splash (configured via
+  // app.json) already shows LandingIcon while the JS bundle loads. The custom
+  // in-app SplashScreen was gating on a forced 1.1s minimum, stacking a second
+  // splash on top for no real reason (OTA is disabled, hydration is ~100ms).
+  // Now we only show the custom splash if there's genuinely something to wait
+  // on — hydration not done, or updates still checking — and we skip the
+  // artificial minimum.
+  const ready = _hasHydrated && updateSettled;
 
   if (!ready) {
     return (
@@ -389,6 +395,13 @@ const styles = StyleSheet.create({
   toggleDot: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#FFF' },
   toggleDotActive: { alignSelf: 'flex-end' },
 
+  drawerLangRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  drawerLangFlag: { fontSize: 20 },
+  drawerLangLabel: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
   langDropdown: {
     marginHorizontal: 16, borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 10,
   },

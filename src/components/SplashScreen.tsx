@@ -90,9 +90,9 @@ export function SplashScreen({ progress, updateStatus = 'idle' }: Props) {
     >
       <Animated.View style={[styles.logoWrap, logoStyle]}>
         <Image
-          source={require('../../assets/OrringBluePetNoBgSalute.png')}
+          source={require('../../assets/LandingIcon.png')}
           style={styles.logo}
-          resizeMode="cover"
+          resizeMode="contain"
         />
       </Animated.View>
 
@@ -154,9 +154,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logo: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    // LandingIcon already bakes its own concentric pastel rings into the
+    // PNG — no need for a circular clip that would crop the outer ring.
+    // Slightly larger footprint so the artwork reads at the weight of the
+    // old circular logo.
+    width: 140,
+    height: 140,
   },
   title: {
     fontSize: 52,
