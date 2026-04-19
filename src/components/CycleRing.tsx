@@ -163,15 +163,17 @@ export function CycleRing({
   // offset inside useAnimatedProps so they twinkle out of sync.
   const sparklePhase = useSharedValue(0);
   // ── XP-bar shimmer layers ──────────────────────────────────────────────
-  // L1 breath       — progress arc "breathes" in its own colour
   // L3 grain        — reads sparklePhase declared above (35 glints)
   // L4 escape sparks — 5 particles that emerge from the arc and drift out
   //
-  // An earlier iteration had an L2 "sweep" — a bright band sliding along the
-  // filled arc. Even at near-zero opacity it read as a distraction, so it
-  // was removed. All remaining layers are either stationary or radial
-  // (outward drift), never tangential motion along the bar.
-  const arcBreathPhase = useSharedValue(0);
+  // Earlier iterations added two more layers, both removed:
+  //   • L2 "sweep"  — a bright band sliding tangentially along the filled
+  //                   arc; read as distracting even at near-zero alpha.
+  //   • L1 "breath" — a second stroke over the progress arc whose opacity
+  //                   + stroke width pulsed in the bar's own colour. It
+  //                   read as a "liquid halo" bleeding around the cadran
+  //                   silhouette, which clashed with the rest of the
+  //                   screen.
   const spark1Phase = useSharedValue(0);
   const spark2Phase = useSharedValue(0);
   const spark3Phase = useSharedValue(0);
@@ -217,12 +219,6 @@ export function CycleRing({
       -1,
       false,
     );
-    // Arc breath — slower, pulses the bar glow opacity & stroke width.
-    arcBreathPhase.value = withRepeat(
-      withTiming(2 * Math.PI, { duration: 2600, easing: Easing.linear }),
-      -1,
-      false,
-    );
     // Five escape-sparks, each on its own period and phase offset so they
     // emit completely out of sync. Periods spread across 700 → 1350 ms.
     spark1Phase.value = withRepeat(
@@ -256,7 +252,7 @@ export function CycleRing({
     );
   }, [
     slidePhase, bobPhase, pulsePhase, bubble1Phase, bubble2Phase, sparklePhase,
-    arcBreathPhase, spark1Phase, spark2Phase, spark3Phase, spark4Phase, spark5Phase,
+    spark1Phase, spark2Phase, spark3Phase, spark4Phase, spark5Phase,
   ]);
 
   // Static level — the pool sits at `progress` from the very first frame.
@@ -336,20 +332,20 @@ export function CycleRing({
     : 'rgba(252, 252, 255, 0.90)';
 
   // ── XP-bar shimmer over the filled progress arc ─────────────────────────
-  // Three composable layers:
-  //   L1 "breath"  — the progress arc itself breathes in its own colour
-  //                  (opacity + stroke width softly pulse)
+  // Two composable layers:
   //   L3 "grain"   — 35 small cyan sparkles distributed with pseudo-random
   //                  phase offsets, producing a continuous glitter-grain
   //   L4 "escape"  — 5 particles that emerge from the arc, drift outward
   //                  by a few pixels and fade — the "magical overflow"
   //
-  // An earlier iteration had an L2 "sweep" (bright band sliding along the
-  // filled arc). Removed: the tangential motion read as distracting even
-  // at very low alpha. Layer numbering preserved for readability.
+  // Two earlier layers were removed:
+  //   • L2 "sweep" — bright band sliding tangentially along the filled arc;
+  //                  distracting even at near-zero alpha.
+  //   • L1 "breath" — second stroke over the progress arc whose opacity
+  //                  + stroke width pulsed; read as a liquid halo bleeding
+  //                  around the cadran silhouette.
   //
-  // All remaining layers are theme-aware and strictly confined to the
-  // filled arc.
+  // All remaining layers are theme-aware.
   const showSparkles = progress > 0.03;
 
   // Shared cyan palette for all shimmer layers. Dark mode gets saturated
@@ -360,19 +356,6 @@ export function CycleRing({
   const haloColor = darkMode
     ? 'rgba(126, 228, 255, 0.32)' // cyan bloom on dark
     : 'rgba(95, 195, 215, 0.30)'; // teal bloom on light
-
-  // L1 — arc breath. Rendered as a second stroke over the progress arc,
-  // slightly wider and at variable opacity. Uses progressColor so the
-  // glow matches the bar's own tint instead of looking like a tacked-on
-  // blue halo.
-  const arcBreathAnimatedProps = useAnimatedProps(() => {
-    'worklet';
-    const p = 0.5 + 0.5 * Math.sin(arcBreathPhase.value);
-    return {
-      opacity: 0.22 + 0.32 * p,         // 0.22 → 0.54
-      strokeWidth: strokeWidth + 3 + p * 4, // breathes +3 → +7 px
-    } as any;
-  });
 
   // L3 — grain. 35 small cyan glints with pseudo-random phase offsets
   // (hash-derived so positions & brightness look randomized without
@@ -561,25 +544,6 @@ export function CycleRing({
           strokeLinecap="round"
           transform={`rotate(-90 ${cx} ${cy})`}
         />
-
-        {/* L1 — arc breath. Second stroke over the filled arc with animated
-            opacity + stroke width. Uses progressColor so the glow matches
-            the bar's own tint. Rendered AFTER the solid arc so its softness
-            overlays the base; strokeLinecap=round keeps the end smooth. */}
-        {showSparkles && (
-          <AnimatedCircle
-            cx={cx}
-            cy={cy}
-            r={radius}
-            stroke={progressColor}
-            fill="none"
-            strokeDasharray={circumference}
-            strokeDashoffset={circumference * (1 - progress)}
-            strokeLinecap="round"
-            transform={`rotate(-90 ${cx} ${cy})`}
-            animatedProps={arcBreathAnimatedProps}
-          />
-        )}
 
         {/* L3 — grain. 35 small cyan glints with pseudo-random phase offsets.
             Halo first (low alpha bloom) then cores on top. Two draw calls. */}
