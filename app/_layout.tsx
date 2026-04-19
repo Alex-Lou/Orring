@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, Image } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
 import { Ionicons } from '@expo/vector-icons';
@@ -346,14 +346,31 @@ export default function RootLayout() {
   if (_hasHydrated && updateSettled) progress = finishedFloor;
   else if (_hasHydrated && (updateStatus === 'checking' || updateStatus === 'downloading')) progress = Math.max(progress, checkedFloor);
 
-  // Double-splash was redundant: the native Android splash (configured via
-  // app.json) already shows LandingIcon while the JS bundle loads. The custom
-  // in-app SplashScreen was gating on a forced 1.1s minimum, stacking a second
-  // splash on top for no real reason (OTA is disabled, hydration is ~100ms).
-  // Now we only show the custom splash if there's genuinely something to wait
-  // on — hydration not done, or updates still checking — and we skip the
-  // artificial minimum.
-  const ready = _hasHydrated && updateSettled;
+  // Custom splash-screen gating.
+  // The native Android splash (configured via app.json) shows LandingIcon
+  // while the JS bundle loads, then disappears on first React render. At
+  // that point our custom SplashScreen (animated logo + boot progress bar)
+  // takes over until we're "ready".
+  //
+  // Without a minimum display time the custom splash can flash for < 100 ms
+  // on fast devices with OTA disabled + quick hydration, making the boot
+  // feel like it's missing a splash entirely. A 1000 ms floor guarantees
+  // the branded splash is always perceptible without feeling sluggish —
+  // dev-build boot was measured < 1.2 s end-to-end including this floor.
+  const MIN_SPLASH_MS = 1000;
+  const [minSplashElapsed, setMinSplashElapsed] = useState(false);
+  const splashStartRef = useRef<number>(Date.now());
+  useEffect(() => {
+    const remaining = MIN_SPLASH_MS - (Date.now() - splashStartRef.current);
+    if (remaining <= 0) {
+      setMinSplashElapsed(true);
+      return;
+    }
+    const id = setTimeout(() => setMinSplashElapsed(true), remaining);
+    return () => clearTimeout(id);
+  }, []);
+
+  const ready = _hasHydrated && updateSettled && minSplashElapsed;
 
   if (!ready) {
     return (
