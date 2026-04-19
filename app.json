@@ -4,18 +4,18 @@
     "slug": "OrrniApp",
     "version": "2.1.4",
     "orientation": "default",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/LandingIcon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "orrniapp",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/LandingIcon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFF0F5"
+      "backgroundColor": "#FCFBFE"
     },
     "runtimeVersion": "2.1.4",
     "updates": {
-      "enabled": true,
+      "enabled": false,
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0,
       "url": "https://u.expo.dev/6dbe771f-1330-4e1b-b379-24a128ac4d13",
@@ -28,8 +28,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#A697D9"
+        "foregroundImage": "./assets/LandingIcon.png",
+        "backgroundColor": "#FCFBFE"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.orrniapp",
