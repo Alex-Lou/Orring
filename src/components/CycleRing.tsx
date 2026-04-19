@@ -141,11 +141,11 @@ export function CycleRing({
   );
 
   // ── UI-thread animation via Reanimated ───────────────────────────────────
-  // Three shared values, each looping 0 → 2π at a fixed period. Because they
+  // A handful of shared values, each looping at a fixed period. Because they
   // run on the UI thread under Reanimated, they do NOT cause any JS
   // re-renders, bridge calls, or React reconciliations. The derived
-  // transforms / radii are computed in useAnimatedProps which also runs on
-  // the UI thread and pushes the result straight to the native view.
+  // transforms / radii / paths are computed in useAnimatedProps which also
+  // runs on the UI thread and pushes the result straight to the native view.
   //
   // This is the key fix for the perceived lag: the previous setInterval +
   // setState approach had the JS thread churning ~10 times per second, and
@@ -163,10 +163,10 @@ export function CycleRing({
   // offset inside useAnimatedProps so they twinkle out of sync.
   const sparklePhase = useSharedValue(0);
   // ── XP-bar shimmer layers ──────────────────────────────────────────────
-  // L1: arc breath      — progress arc "breathes" in its own colour
-  // L2: sweep           — bright cyan band traveling along the filled arc
-  // L4: escape sparks   — 3 particles that emerge from random arc points
-  //                       and drift outward while fading
+  // L1 breath       — progress arc "breathes" in its own colour
+  // L2 sweep        — near-transparent sheen sliding along the filled arc
+  // L3 grain        — reads sparklePhase declared above (25 glints)
+  // L4 escape sparks — 3 particles that emerge from the arc and drift out
   const arcBreathPhase = useSharedValue(0);
   const sweepPhase = useSharedValue(0);
   const spark1Phase = useSharedValue(0);
@@ -346,9 +346,12 @@ export function CycleRing({
   const haloColor = darkMode
     ? 'rgba(126, 228, 255, 0.32)' // cyan bloom on dark
     : 'rgba(95, 195, 215, 0.30)'; // teal bloom on light
+  // Sweep colour — ghosted. The sweep should register as a subtle sheen
+  // traveling along the arc, not a headlight. Base alpha is already low;
+  // the animated opacity multiplier below drops it further at the edges.
   const sweepColor = darkMode
-    ? 'rgba(200, 248, 255, 0.85)'
-    : 'rgba(150, 225, 240, 0.80)';
+    ? 'rgba(200, 248, 255, 1)'
+    : 'rgba(150, 225, 240, 1)';
 
   // L1 — arc breath. Rendered as a second stroke over the progress arc,
   // slightly wider and at variable opacity. Uses progressColor so the
@@ -382,7 +385,9 @@ export function CycleRing({
     const ratio = overlap / sweepLen;
     return {
       strokeDashoffset: -dashStart,
-      opacity: 0.9 * ratio,
+      // Ghosted pass: peak alpha ~0.12. The motion reads as a faint sheen
+      // instead of commanding visual attention.
+      opacity: 0.12 * ratio,
     } as any;
   });
 
@@ -569,8 +574,9 @@ export function CycleRing({
           />
         )}
 
-        {/* L2 — sweep. Bright cyan band traveling along the filled arc.
-            Opacity fades at both ends so it never crosses the today marker. */}
+        {/* L2 — sweep. Bright cyan band traveling along the filled arc, but
+            at near-transparent alpha so the motion is felt as a subtle sheen
+            rather than demanding attention. */}
         {showSparkles && (
           <AnimatedCircle
             cx={cx}
