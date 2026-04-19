@@ -18,6 +18,7 @@ import {
 import { useCycleStore } from '../src/store/cycleStore';
 import { useTheme } from '../src/theme/useTheme';
 import { useTranslation } from 'react-i18next';
+import { useIsRTL } from '../src/i18n/useIsRTL';
 
 // Time-based greeting
 function getGreetingKey(): string {
@@ -28,12 +29,19 @@ function getGreetingKey(): string {
   return 'greetingNight';
 }
 
-function getGreetingEmoji(): string {
+// Greeting icon per time of day. All four slots share a consistent painterly
+// style, tightly framed and uniformly sized.
+//   - Morning (5h–12h): Matin.png    (sparrow on a branch, sunrise)
+//   - Afternoon (12h–18h): ApresMidi.png (sun through clouds)
+//   - Evening (18h–22h): Soir.png   (setting sun over the ocean)
+//   - Night (22h–5h): Nuit.png      (crescent moon, starry sky)
+type GreetingIcon = { kind: 'image'; value: 'morning' | 'sun' | 'sunset' | 'night' };
+function getGreetingIcon(): GreetingIcon {
   const h = new Date().getHours();
-  if (h >= 5 && h < 12) return '☀️';
-  if (h >= 12 && h < 18) return '🌤️';
-  if (h >= 18 && h < 22) return '🌇';
-  return '🌙';
+  if (h >= 5 && h < 12) return { kind: 'image', value: 'morning' };
+  if (h >= 12 && h < 18) return { kind: 'image', value: 'sun' };
+  if (h >= 18 && h < 22) return { kind: 'image', value: 'sunset' };
+  return { kind: 'image', value: 'night' };
 }
 
 // Pet next to the greeting — awake variant in daytime, sleeping variant after 18h.
@@ -50,12 +58,13 @@ export default function MyCycleScreen() {
   const {
     firstInsertDate, ringStatus, cycleLogs, periodLogs,
     insertRing, removeRing, resetAll, userName, darkMode, startTempRemoval,
-    addPeriodLog, updatePeriodLog, deletePeriodLog,
+    addPeriodLog, updatePeriodLog, deletePeriodLog, debugIconOverride,
   } = useCycleStore();
   const { width } = useWindowDimensions();
   const [confirmAction, setConfirmAction] = useState<'insert' | 'remove' | null>(null);
   const [selectedPeriodDate, setSelectedPeriodDate] = useState<Date | null>(null);
   const { t } = useTranslation();
+  const isRTL = useIsRTL();
   const theme = useTheme();
 
   const info = useMemo(
@@ -146,11 +155,31 @@ export default function MyCycleScreen() {
         <Animated.View entering={FadeInDown.duration(700).springify()} style={styles.header}>
           <View style={styles.headerTop}>
             <View style={{ flex: 1 }}>
-              <View style={styles.greetingRow}>
+              <View
+                style={[
+                  styles.greetingRow,
+                  isRTL && styles.rtlRow,
+                  // Slight pull toward the screen edge so the greeting text
+                  // visually aligns with the date line below it, instead of
+                  // being pushed right by the full width of the bird. The
+                  // bird still sits inside the safe padding of the ScrollView.
+                  isRTL ? { marginRight: -8 } : { marginLeft: -8 },
+                ]}
+              >
                 {(() => {
                   const petState = getPetState();
                   if (petState === 'none') return null;
                   const isAwake = petState === 'awake';
+                  // Natural artwork faces right. In LTR the awake bird sits
+                  // on the LEFT of the greeting and already points at the
+                  // text (no flip). The sleeping bird is mirrored for
+                  // aesthetic reasons (user preference). In RTL, row-reverse
+                  // swaps the bird to the RIGHT of the text, so each of the
+                  // two flip decisions inverts — keeping the bird always
+                  // facing the greeting in the awake state, and always
+                  // facing away in the sleeping state, regardless of
+                  // language direction.
+                  const flipBird = isAwake ? isRTL : !isRTL;
                   return (
                     <View style={styles.petWrap}>
                       <Image
@@ -161,15 +190,13 @@ export default function MyCycleScreen() {
                         }
                         style={[
                           styles.petBird,
-                          // Sleeping bird faces the wrong way when placed left of text;
-                          // mirror it so it nestles toward the greeting.
-                          !isAwake && { transform: [{ scaleX: -1 }] },
+                          flipBird && { transform: [{ scaleX: -1 }] },
                         ]}
                         resizeMode="contain"
                       />
                       {petState === 'night' && (
                         <Image
-                          source={require('../assets/zzz.jpg')}
+                          source={require('../assets/ZZZNoBg.png')}
                           style={styles.petZzz}
                           resizeMode="contain"
                         />
@@ -177,14 +204,81 @@ export default function MyCycleScreen() {
                     </View>
                   );
                 })()}
-                <Text style={[styles.greeting, { color: theme.primaryDark }]}>
-                  {t(getGreetingKey())}{userName ? `, ${userName}` : ''} {getGreetingEmoji()}
+                <Text
+                  // Keep everything on a single line so the grouping
+                  // [bird][text][icon] never wraps and the time-of-day icon
+                  // stays right next to the text. In languages where the
+                  // greeting + name is long (notably Arabic: "مساء الخير,
+                  // Alex"), instead of truncating with "…" we let the text
+                  // auto-shrink down to 60% of its size. That way the whole
+                  // name is always readable and the icon still sits snug
+                  // against the text.
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                  style={[
+                    styles.greeting,
+                    { color: theme.primaryDark },
+                    // In RTL the row is reversed, so the bird lives on the
+                    // right visually. Right-aligning the text keeps it hugging
+                    // the bird instead of drifting to the far-left edge and
+                    // crowding the TempRemovalCountdown on the right.
+                    isRTL && { textAlign: 'right' },
+                  ]}
+                >
+                  {t(getGreetingKey())}{userName ? `, ${userName}` : ''}
                 </Text>
+                {(() => {
+                  // Unified icon set — all four time-of-day glyphs now share
+                  // the same square framing & roughly equal weight.
+                  //   Matin / ApresMidi / Soir / Nuit
+                  // A debug override (set from the drawer header on this
+                  // screen) lets us preview any slot without waiting for the
+                  // clock. When the override is `null` we fall back to the
+                  // time-based resolver.
+                  const auto = getGreetingIcon();
+                  const resolved = debugIconOverride ?? auto.value;
+                  const src =
+                    resolved === 'morning'
+                      ? require('../assets/icones/Matin.png')
+                      : resolved === 'sun'
+                        ? require('../assets/icones/ApresMidi.png')
+                        : resolved === 'sunset'
+                          ? require('../assets/icones/Soir.png')
+                          : require('../assets/icones/Nuit.png');
+                  // The latest Nuit.png is tightly framed (moon + night sky
+                  // reach every edge of the canvas, ~100% fill) — the other
+                  // three PNGs only fill ~85% of their canvas. So at an equal
+                  // bounding box, Nuit would render VISUALLY LARGER than its
+                  // siblings. Shrink it slightly so every greeting icon looks
+                  // the same visible size.
+                  const isNight = resolved === 'night';
+                  const sizeFix = isNight ? { width: 38, height: 38 } : null;
+                  // Nuit.png glyph sits a hair higher than the other greeting
+                  // icons (tighter top-crop). A small marginTop drops it a few
+                  // pixels into visual alignment with the text baseline.
+                  const nightAlignFix = isNight ? { marginTop: 4 } : null;
+                  return (
+                    <Image
+                      source={src}
+                      style={[
+                        styles.greetingIconImg,
+                        sizeFix,
+                        // Pull the icon back toward the text — the PNGs keep
+                        // a bit of transparent halo around the glyph, so the
+                        // row gap alone leaves too much air.
+                        isRTL ? { marginRight: -10 } : { marginLeft: -10 },
+                        nightAlignFix,
+                      ]}
+                      resizeMode="contain"
+                    />
+                  );
+                })()}
               </View>
-              <Text style={[styles.date, { color: theme.textSecondary }]}>
+              <Text style={[styles.date, { color: theme.textSecondary }, isRTL && styles.rtlText]}>
                 {formatDateFr(new Date(), 'EEEE dd MMMM')}
               </Text>
-              <Text style={[styles.since, { color: theme.textLight }]}>
+              <Text style={[styles.since, { color: theme.textLight }, isRTL && styles.rtlText]}>
                 {t('since', { date: formatDateFr(info.ringInsertDate, 'dd MMMM') })}
               </Text>
             </View>
@@ -205,7 +299,7 @@ export default function MyCycleScreen() {
         </Animated.View>
 
         {/* Status pills */}
-        <Animated.View entering={SlideInRight.delay(500).duration(500).springify()} style={styles.pillsRow}>
+        <Animated.View entering={SlideInRight.delay(500).duration(500).springify()} style={[styles.pillsRow, isRTL && styles.rtlRow]}>
           <View style={[
             styles.pill,
             isRingIn
@@ -255,39 +349,45 @@ export default function MyCycleScreen() {
 
         {/* Explanation + key dates */}
         <Animated.View entering={FadeInUp.delay(800).duration(600).springify()} style={[styles.explainCard, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.explainTitle, { color: theme.text }]}>
+          <Text style={[styles.explainTitle, { color: theme.text }, isRTL && styles.rtlText]}>
             {isRingIn ? t('ringInPlaceExplain') : t('pauseExplain')}
           </Text>
-          <Text style={[styles.explainBody, { color: theme.textSecondary }]}>
+          <Text style={[styles.explainBody, { color: theme.textSecondary }, isRTL && styles.rtlText]}>
             {isRingIn
               ? t('ringInExplainBody', { day: info.currentDay, days: info.daysUntilChange })
               : t('pauseInProgressBody', { days: info.daysUntilChange })
             }
           </Text>
           {info.insertionDateTime && (
-            <Text style={[styles.dateDetail, { color: theme.text }]}>
-              ⭕ {t('insertedOn', { date: formatDateTimeFr(info.insertionDateTime) })}
+            <Text style={[styles.dateDetail, { color: theme.text }, isRTL && styles.rtlText]}>
+              {isRTL
+                ? `${t('insertedOn', { date: formatDateTimeFr(info.insertionDateTime) })} ⭕`
+                : `⭕ ${t('insertedOn', { date: formatDateTimeFr(info.insertionDateTime) })}`}
             </Text>
           )}
           {info.removalDateTime && (
-            <Text style={[styles.dateDetail, { color: theme.text }]}>
-              ♻️ {t('removalShort')} : {formatDateTimeFr(info.removalDateTime)}
+            <Text style={[styles.dateDetail, { color: theme.text }, isRTL && styles.rtlText]}>
+              {isRTL
+                ? `${t('removalShort')} : ${formatDateTimeFr(info.removalDateTime)} ♻️`
+                : `♻️ ${t('removalShort')} : ${formatDateTimeFr(info.removalDateTime)}`}
             </Text>
           )}
           {info.nextInsertionDateTime && (
-            <Text style={[styles.dateDetail, { color: theme.text }]}>
-              🔄 {t('nextCycle')} : {formatDateTimeFr(info.nextInsertionDateTime)}
+            <Text style={[styles.dateDetail, { color: theme.text }, isRTL && styles.rtlText]}>
+              {isRTL
+                ? `${t('nextCycle')} : ${formatDateTimeFr(info.nextInsertionDateTime)} 🔄`
+                : `🔄 ${t('nextCycle')} : ${formatDateTimeFr(info.nextInsertionDateTime)}`}
             </Text>
           )}
         </Animated.View>
 
         {/* Period tracking */}
         <Animated.View entering={FadeInUp.delay(1000).duration(600).springify()} style={[styles.periodCard, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('periodTracking')}</Text>
-          <Text style={[styles.sectionSub, { color: theme.textSecondary }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }, isRTL && styles.rtlText]}>{t('periodTracking')}</Text>
+          <Text style={[styles.sectionSub, { color: theme.textSecondary }, isRTL && styles.rtlText]}>
             {t('periodTrackingSub')}
           </Text>
-          <View style={styles.periodGrid}>
+          <View style={[styles.periodGrid, isRTL && styles.rtlRow]}>
             {pauseDays.map((day, i) => (
               <Animated.View key={day.dayNumber} entering={FadeInUp.delay(1100 + i * 60).duration(400).springify()}>
                 <PeriodDayCell
@@ -359,7 +459,16 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   greeting: { fontSize: fontSize.xxl, fontWeight: fontWeight.black, letterSpacing: -0.5, flexShrink: 1 },
-  greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  // No flexWrap — when the greeting is too long (e.g. "مساء الخير, Alex 🌇")
+  // we'd rather let flexShrink trim it than have a wrapped second line appear
+  // at the far left and collide with the TempRemovalCountdown on the right.
+  // gap 0 — we use explicit negative margins on the icon instead, and we want
+  // the greeting text to sit right next to the bird in LTR (user preference).
+  greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+  // Applied on top of greetingRow / titleRow when the active language is RTL
+  // so that bird + emoji land on the mirrored side of the greeting.
+  rtlRow: { flexDirection: 'row-reverse' },
+  rtlText: { textAlign: 'right', writingDirection: 'rtl' },
   petWrap: {
     width: 46,
     height: 46,
@@ -371,11 +480,21 @@ const styles = StyleSheet.create({
   },
   petZzz: {
     position: 'absolute',
-    top: -6,
-    right: -10,
-    width: 22,
-    height: 22,
+    top: -30,
+    right: -40,
+    width: 72,
+    height: 72,
+    // Tilted so the small end of the "Zzz" points up and slightly outward,
+    // like a classic sleep motif hovering near the bird's head.
+    transform: [{ rotate: '-40deg' }],
   },
+  // Matches the visual weight of the adjacent emoji in the other time-of-day
+  // variants. Rendered as a sibling of the greeting <Text>, not inline.
+  // Shared by all four greeting icons (Matin / ApresMidi / Soir / Nuit).
+  // Bumped from 32 → 44 now that every PNG is tightly framed and equal-size —
+  // "a touch bigger so we can clearly see them, but not so large they steal
+  // focus from the greeting text".
+  greetingIconImg: { width: 44, height: 44 },
   date: { fontSize: fontSize.md, marginTop: 2, textTransform: 'capitalize' },
   since: { fontSize: fontSize.sm, marginTop: 2, textTransform: 'capitalize' },
 
