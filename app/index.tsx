@@ -264,10 +264,12 @@ export default function MyCycleScreen() {
                       style={[
                         styles.greetingIconImg,
                         sizeFix,
-                        // Pull the icon back toward the text — the PNGs keep
-                        // a bit of transparent halo around the glyph, so the
-                        // row gap alone leaves too much air.
-                        isRTL ? { marginRight: -10 } : { marginLeft: -10 },
+                        // Icon spacing relative to the greeting text.
+                        // • RTL: keep the tight tuck (-10) — Arabic glyph
+                        //   metrics leave plenty of natural air on the row.
+                        // • LTR: push the icon ~10px to the right of the
+                        //   text so it doesn't feel glued to the name.
+                        isRTL ? { marginRight: -10 } : { marginLeft: 0 },
                         nightAlignFix,
                       ]}
                       resizeMode="contain"
