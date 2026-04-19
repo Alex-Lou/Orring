@@ -285,25 +285,46 @@ export function CycleRing({
   // catching light — not like a metronome. Positions update with `progress`
   // (once/day) so they stay on top of the filled arc as it grows.
   //
+  // IMPORTANT: sparkles are STRICTLY confined to the filled arc. The angle
+  // formula below is `-π/2 + progress * d.off * 2π` where d.off ∈ [0.07, 0.88]
+  // — a fraction of the *already-filled* portion. The unfilled tail of the
+  // ring stays visually untouched. The last offset (0.88) leaves breathing
+  // room before the today marker so a peak-brightness glint never bleeds
+  // into the today glow.
+  //
   // Paillette feel: the `s^5` curve below means each sparkle spends ~80%
   // of its cycle near-invisible, then pops briefly to full brightness and
   // fades. Combined with varied per-sparkle rates, the eye never catches
   // a global rhythm — it just sees points of light flickering on and off.
+  //
+  // Theme adaptation:
+  //   DARK : crystalline pure-white glints — reads like stars on the colored
+  //          arc (high contrast against the dark backdrop).
+  //   LIGHT: warm champagne-white glints + a gentle floor opacity so the
+  //          shimmer stays readable on the paler periwinkle arc. Base size
+  //          is slightly boosted because white-on-light needs more area to
+  //          pop visually.
   const sparkleColor = darkMode
-    ? 'rgba(255, 255, 255, 0.95)'
-    : 'rgba(255, 255, 255, 1)';
+    ? 'rgba(255, 255, 255, 1)'
+    : 'rgba(255, 248, 232, 1)';
+  const sparkleSizeScale = darkMode ? 1.0 : 1.2;
+  // Light-mode floor opacity — a faint glimmer is always visible so the arc
+  // never looks inert between flashes. Dark mode can go all-or-nothing.
+  const sparkleFloor = darkMode ? 0.0 : 0.12;
   const showSparkles = progress > 0.03;
-  // [fraction-along-arc, per-sparkle rate multiplier, phase offset, base size]
+  // [fraction-along-filled-arc, per-sparkle rate multiplier, phase offset, base size]
   // Offsets are deliberately irregular — eye shouldn't latch onto a grid.
+  // Range [0.07, 0.88] keeps glints well inside the filled arc (the unfilled
+  // tail is never touched) and away from the today marker's halo.
   const sparkleDefs: Array<{ off: number; rate: number; phase: number; size: number }> = [
     { off: 0.07, rate: 1.00, phase: 0.0,  size: 1.3 },
-    { off: 0.19, rate: 1.35, phase: 2.1,  size: 1.0 },
-    { off: 0.28, rate: 0.85, phase: 4.0,  size: 1.6 },
-    { off: 0.42, rate: 1.20, phase: 1.3,  size: 1.1 },
-    { off: 0.54, rate: 1.55, phase: 3.6,  size: 1.4 },
-    { off: 0.66, rate: 0.92, phase: 5.2,  size: 1.0 },
-    { off: 0.78, rate: 1.42, phase: 0.8,  size: 1.5 },
-    { off: 0.93, rate: 1.10, phase: 2.9,  size: 1.2 },
+    { off: 0.18, rate: 1.35, phase: 2.1,  size: 1.0 },
+    { off: 0.27, rate: 0.85, phase: 4.0,  size: 1.6 },
+    { off: 0.39, rate: 1.20, phase: 1.3,  size: 1.1 },
+    { off: 0.51, rate: 1.55, phase: 3.6,  size: 1.4 },
+    { off: 0.63, rate: 0.92, phase: 5.2,  size: 1.0 },
+    { off: 0.75, rate: 1.42, phase: 0.8,  size: 1.5 },
+    { off: 0.88, rate: 1.10, phase: 2.9,  size: 1.2 },
   ];
   const sparklePositions = useMemo(() => {
     return sparkleDefs.map(d => {
@@ -319,54 +340,80 @@ export function CycleRing({
   // Each useAnimatedProps has hard-coded literals — worklets can't close
   // over array indices, so we write the 8 hooks out inline. The curve is
   // `s^5` (sharp glint, mostly off), and radius breathes from ~0.25× base
-  // to ~1× base + a 2.4× flash peak.
+  // to ~1× base + a 2.4× flash peak. `sparkleSizeScale` and `sparkleFloor`
+  // are captured primitives that retune the curve for light mode (bigger
+  // glints, always-on shimmer floor).
   const sparkle1Props = useAnimatedProps(() => {
     'worklet';
     const s = 0.5 + 0.5 * Math.sin(sparklePhase.value * 1.00 + 0.0);
     const g = s * s * s * s * s;
-    return { opacity: g, r: 1.3 * (0.25 + g * 2.4) } as any;
+    return {
+      opacity: sparkleFloor + (1 - sparkleFloor) * g,
+      r: 1.3 * sparkleSizeScale * (0.25 + g * 2.4),
+    } as any;
   });
   const sparkle2Props = useAnimatedProps(() => {
     'worklet';
     const s = 0.5 + 0.5 * Math.sin(sparklePhase.value * 1.35 + 2.1);
     const g = s * s * s * s * s;
-    return { opacity: g, r: 1.0 * (0.25 + g * 2.4) } as any;
+    return {
+      opacity: sparkleFloor + (1 - sparkleFloor) * g,
+      r: 1.0 * sparkleSizeScale * (0.25 + g * 2.4),
+    } as any;
   });
   const sparkle3Props = useAnimatedProps(() => {
     'worklet';
     const s = 0.5 + 0.5 * Math.sin(sparklePhase.value * 0.85 + 4.0);
     const g = s * s * s * s * s;
-    return { opacity: g, r: 1.6 * (0.25 + g * 2.4) } as any;
+    return {
+      opacity: sparkleFloor + (1 - sparkleFloor) * g,
+      r: 1.6 * sparkleSizeScale * (0.25 + g * 2.4),
+    } as any;
   });
   const sparkle4Props = useAnimatedProps(() => {
     'worklet';
     const s = 0.5 + 0.5 * Math.sin(sparklePhase.value * 1.20 + 1.3);
     const g = s * s * s * s * s;
-    return { opacity: g, r: 1.1 * (0.25 + g * 2.4) } as any;
+    return {
+      opacity: sparkleFloor + (1 - sparkleFloor) * g,
+      r: 1.1 * sparkleSizeScale * (0.25 + g * 2.4),
+    } as any;
   });
   const sparkle5Props = useAnimatedProps(() => {
     'worklet';
     const s = 0.5 + 0.5 * Math.sin(sparklePhase.value * 1.55 + 3.6);
     const g = s * s * s * s * s;
-    return { opacity: g, r: 1.4 * (0.25 + g * 2.4) } as any;
+    return {
+      opacity: sparkleFloor + (1 - sparkleFloor) * g,
+      r: 1.4 * sparkleSizeScale * (0.25 + g * 2.4),
+    } as any;
   });
   const sparkle6Props = useAnimatedProps(() => {
     'worklet';
     const s = 0.5 + 0.5 * Math.sin(sparklePhase.value * 0.92 + 5.2);
     const g = s * s * s * s * s;
-    return { opacity: g, r: 1.0 * (0.25 + g * 2.4) } as any;
+    return {
+      opacity: sparkleFloor + (1 - sparkleFloor) * g,
+      r: 1.0 * sparkleSizeScale * (0.25 + g * 2.4),
+    } as any;
   });
   const sparkle7Props = useAnimatedProps(() => {
     'worklet';
     const s = 0.5 + 0.5 * Math.sin(sparklePhase.value * 1.42 + 0.8);
     const g = s * s * s * s * s;
-    return { opacity: g, r: 1.5 * (0.25 + g * 2.4) } as any;
+    return {
+      opacity: sparkleFloor + (1 - sparkleFloor) * g,
+      r: 1.5 * sparkleSizeScale * (0.25 + g * 2.4),
+    } as any;
   });
   const sparkle8Props = useAnimatedProps(() => {
     'worklet';
     const s = 0.5 + 0.5 * Math.sin(sparklePhase.value * 1.10 + 2.9);
     const g = s * s * s * s * s;
-    return { opacity: g, r: 1.2 * (0.25 + g * 2.4) } as any;
+    return {
+      opacity: sparkleFloor + (1 - sparkleFloor) * g,
+      r: 1.2 * sparkleSizeScale * (0.25 + g * 2.4),
+    } as any;
   });
   const sparkleAnimatedProps = [
     sparkle1Props,
