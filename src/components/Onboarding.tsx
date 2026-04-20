@@ -135,7 +135,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <TimeStep
           hour={selHour}
           minute={selMinute}
-          onChange={(h, m) => { setSelHour(h); setSelMinute(m); }}
+          onChange={(h: number, m: number) => { setSelHour(h); setSelMinute(m); }}
           onConfirm={handleTimeConfirm}
           t={t}
           theme={theme}

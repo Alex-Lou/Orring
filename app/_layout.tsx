@@ -274,7 +274,7 @@ function CustomDrawerContent(props: any) {
 // ─── Root Layout ───
 
 export default function RootLayout() {
-  const { darkMode, language, _hasHydrated } = useCycleStore();
+  const { darkMode, language, _hasHydrated, rescheduleNotifications } = useCycleStore();
   const { t } = useTranslation();
   const theme = darkMode ? DARK : LIGHT;
   const isRTL = useIsRTL();
@@ -283,9 +283,24 @@ export default function RootLayout() {
   // floating UpdateIndicator without force-closing the app manually.
   const { status: updateStatus, isSettled: updateSettled, applyUpdate } = useExpoUpdates();
 
+  // Permission prompt at boot (once).
   useEffect(() => {
     requestNotificationPermissions().catch(() => {});
   }, []);
+
+  // Re-hydrate the OS notification queue on every cold boot.
+  //
+  // Android & iOS can silently drop scheduled notifications (force-stop,
+  // OEM battery savers, reboot without BOOT_COMPLETED, user revokes then
+  // re-grants POST_NOTIFICATIONS, etc.). Without this, a user who grants
+  // permission AFTER installation would never see J-7/J-1/J reminders —
+  // they'd only start getting them on the next insert/remove. Running
+  // reschedule once per boot (gated on hydration so the store is ready)
+  // closes every gap. It's a no-op if notifications are disabled or if
+  // no insert has ever been logged.
+  useEffect(() => {
+    if (_hasHydrated) rescheduleNotifications();
+  }, [_hasHydrated, rescheduleNotifications]);
 
   useEffect(() => {
     if (language) i18n.changeLanguage(language);

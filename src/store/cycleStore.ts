@@ -76,6 +76,14 @@ interface CycleActions {
   cancelTempRemoval: () => void;
   setTempRemovalNotify: (v: boolean) => void;
   setDebugIconOverride: (v: CycleData['debugIconOverride']) => void;
+  /**
+   * Reschedules J-7 / J-1 / J notifications from the latest `insert` log,
+   * using the store's current reminder hour/minute. Safe to call anytime —
+   * no-op when notifications are disabled or no insert has ever occurred.
+   * Called on app boot to recover from rescheduling gaps (e.g. user denied
+   * then later granted permission, or OS dropped queued notifs).
+   */
+  rescheduleNotifications: () => void;
   clearHistory: () => void;
   deleteCycleLog: (id: string) => void;
   deleteCycleLogsBetween: (startMs: number, endMs: number) => void;
@@ -111,7 +119,30 @@ const INITIAL_DATA: CycleData = {
 
 export const useCycleStore = create<CycleState>()(
   persist(
-    (set, get) => ({
+    (set, get) => {
+      /**
+       * Finds the most recent `insert` log and reschedules the 6 cycle
+       * notifications from it. No-op if notifications are disabled or no
+       * insert exists. Centralizes what was duplicated across removeRing,
+       * setNotificationsEnabled, setReminderTime, and boot.
+       *
+       * `extraLogs` lets callers pass a log they've just computed but not
+       * yet committed to state (e.g. the new `remove` log in removeRing)
+       * so we don't miss it due to zustand's async set.
+       */
+      const rescheduleFromLastInsert = (extraLogs: CycleLog[] = []) => {
+        if (!get().notificationsEnabled) return;
+        const logs = [...get().cycleLogs, ...extraLogs];
+        const lastInsert = logs.filter(l => l.action === 'insert').pop();
+        if (!lastInsert) return;
+        scheduleRingNotifications(
+          new Date(lastInsert.date),
+          get().reminderHour,
+          get().reminderMinute,
+        ).catch(() => {});
+      };
+
+      return ({
       ...INITIAL_DATA,
       _hasHydrated: false,
 
@@ -130,7 +161,7 @@ export const useCycleStore = create<CycleState>()(
         });
         // Annule la notif du timer si elle était prévue
         cancelTempRemovalNotif().catch(() => {});
-        // Schedule notifications for this cycle
+        // Schedule notifications for this cycle from the fresh insert date.
         if (get().notificationsEnabled) {
           scheduleRingNotifications(new Date(insertDate), get().reminderHour, get().reminderMinute).catch(() => {});
         }
@@ -145,12 +176,7 @@ export const useCycleStore = create<CycleState>()(
         });
         // Reschedule from the actual last insertion (NOT the removal date),
         // otherwise the next cycle's J-7/J-1 reminders would be offset.
-        if (get().notificationsEnabled) {
-          const lastInsert = [...get().cycleLogs, newLog].filter(l => l.action === 'insert').pop();
-          if (lastInsert) {
-            scheduleRingNotifications(new Date(lastInsert.date), get().reminderHour, get().reminderMinute).catch(() => {});
-          }
-        }
+        rescheduleFromLastInsert([newLog]);
       },
 
       addPeriodLog: (log) => {
@@ -186,23 +212,18 @@ export const useCycleStore = create<CycleState>()(
         if (!enabled) {
           cancelAllNotifications().catch(() => {});
         } else {
-          // Reschedule if enabling
-          const lastInsert = [...get().cycleLogs].filter(l => l.action === 'insert').pop();
-          if (lastInsert) {
-            scheduleRingNotifications(new Date(lastInsert.date), get().reminderHour, get().reminderMinute).catch(() => {});
-          }
+          rescheduleFromLastInsert();
         }
       },
 
       setReminderTime: (hour, minute) => {
         set({ reminderHour: hour, reminderMinute: minute });
-        // Reschedule with new hour
-        if (get().notificationsEnabled) {
-          const lastInsert = [...get().cycleLogs].filter(l => l.action === 'insert').pop();
-          if (lastInsert) {
-            scheduleRingNotifications(new Date(lastInsert.date), hour, minute).catch(() => {});
-          }
-        }
+        // Reschedule with new hour/minute (helper reads them back from state).
+        rescheduleFromLastInsert();
+      },
+
+      rescheduleNotifications: () => {
+        rescheduleFromLastInsert();
       },
 
       toggleDarkMode: () => set({ darkMode: !get().darkMode }),
@@ -274,7 +295,8 @@ export const useCycleStore = create<CycleState>()(
           // userName est reset pour retriggerer la demande dans l'onboarding
         });
       },
-    }),
+      });
+    },
     {
       // Key bumped to force-discard any data written by pre-v2.1.2 builds.
       // The old schema is incompatible and not recoverable, so fresh install it is.
