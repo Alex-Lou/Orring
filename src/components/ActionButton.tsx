@@ -1,11 +1,15 @@
 import React from 'react';
-import { Text, StyleSheet, Pressable } from 'react-native';
+import { Text, StyleSheet, Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '../theme';
 
+// `icon` accepte indifféremment une string emoji (ex: "♻️") ou un
+// ReactNode (ex: <MetierIcon name="ring" size={40} />). Les strings sont
+// enveloppées dans un <Text> pour garder le rendu historique ; tout le
+// reste est rendu tel quel.
 interface ActionButtonProps {
-  icon: string;
+  icon: string | React.ReactNode;
   label: string;
   color: string;
   bgColor: string;
@@ -43,7 +47,11 @@ export function ActionButton({ icon, label, color, bgColor, onPress }: ActionBut
       onPressOut={handlePressOut}
       style={[styles.button, { backgroundColor: bgColor, borderColor: color }, animatedStyle]}
     >
-      <Text style={styles.icon}>{icon}</Text>
+      {typeof icon === 'string' ? (
+        <Text style={styles.icon}>{icon}</Text>
+      ) : (
+        <View style={styles.iconSlot}>{icon}</View>
+      )}
       <Text style={[styles.label, { color }]}>{label}</Text>
     </AnimatedPressable>
   );
@@ -63,6 +71,11 @@ const styles = StyleSheet.create({
   },
   icon: {
     fontSize: 40,
+  },
+  iconSlot: {
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   label: {
     fontSize: fontSize.md,

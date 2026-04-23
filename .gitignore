@@ -54,3 +54,7 @@ assets/king.png
 
 # APK dumps
 *.apk
+
+# Local build logs
+build-out/
+

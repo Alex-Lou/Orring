@@ -88,13 +88,19 @@ export function SplashScreen({ progress, updateStatus = 'idle' }: Props) {
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(350)}
     >
-      <Animated.View style={[styles.logoWrap, logoStyle]}>
-        <Image
-          source={require('../../assets/LandingIcon.png')}
-          style={styles.logo}
-          resizeMode="contain"
-        />
-      </Animated.View>
+      {/* Wrapper non-animé en premier pour garantir que l'image apparaît
+          dès le premier frame, même si la worklet Reanimated n'a pas
+          encore calculé la scale de pulse. L'animation de "respiration"
+          est appliquée sur un wrapper interne. */}
+      <View style={styles.logoWrap}>
+        <Animated.View style={logoStyle}>
+          <Image
+            source={require('../../assets/LandingIcon.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </Animated.View>
+      </View>
 
       <Animated.Text
         entering={FadeInUp.delay(180).duration(520)}

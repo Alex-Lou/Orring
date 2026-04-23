@@ -89,17 +89,28 @@ export function CycleRing({
 
   const tickColor = darkMode ? theme.textLight : theme.textSecondary;
 
-  // Liquid gradient — MIRRORED between modes:
-  //   DARK : top = purple crest,  body = green    → green-dominant
-  //   LIGHT: top = light green,   body = pervenche → periwinkle-dominant
-  // Both variants put the "accent" as a thin top strip and the dominant
-  // color as the deep body (gradient stop at 0.22 in the Defs keeps it thin).
+  // Liquid gradient — MIRRORED between modes AND phase-aware:
+  //   RING-IN  (21 j pré-retrait) : palette cool (vert ↔ pervenche)
+  //   RING-OUT (7 j de pause)     : palette warm (blush ↔ rose/corail)
+  //
+  //   DARK  : top = crête d'accent,  body = teinte profonde   → body-dominant
+  //   LIGHT : top = teinte douce,    body = teinte affirmée   → body-dominant
+  // Le stop gradient à 0.22 dans les Defs garde la crête fine pour que le
+  // corps domine visuellement.
   const liquidTopColor = darkMode
-    ? 'rgba(170, 150, 225, 0.88)'      // dark: purple crest
-    : 'rgba(170, 215, 180, 0.78)';     // light: soft green accent
+    ? (isRingIn
+        ? 'rgba(170, 150, 225, 0.88)'    // dark ring-in : purple crest
+        : 'rgba(250, 200, 190, 0.88)')   // dark ring-out: warm peach crest
+    : (isRingIn
+        ? 'rgba(170, 215, 180, 0.78)'    // light ring-in : soft green accent
+        : 'rgba(245, 200, 210, 0.78)');  // light ring-out: blush accent
   const liquidBottomColor = darkMode
-    ? 'rgba(95, 160, 110, 0.92)'       // dark: deep forest green
-    : 'rgba(145, 140, 215, 0.85)';     // light: pervenche body
+    ? (isRingIn
+        ? 'rgba(95, 160, 110, 0.92)'     // dark ring-in : deep forest green
+        : 'rgba(200, 120, 140, 0.92)')   // dark ring-out: deep rose
+    : (isRingIn
+        ? 'rgba(145, 140, 215, 0.85)'    // light ring-in : pervenche body
+        : 'rgba(220, 150, 175, 0.85)');  // light ring-out: warm rose body
 
   const todayGlowColor = darkMode
     ? (isRingIn ? 'rgba(158, 228, 172, 0.55)' : 'rgba(210, 190, 245, 0.55)')
@@ -111,24 +122,37 @@ export function CycleRing({
   const totalDays = isRingIn ? 21 : 7;
   const dayInPhase = isRingIn ? currentDay : Math.max(0, currentDay - 21);
   const progress = Math.min(dayInPhase / totalDays, 1);
-  const showToday = progress > 0.002 && progress < 1.0;
+  // Jour J = retrait/réinsertion prévus aujourd'hui. Tous les pulses du
+  // today-dot sont alors amplifiés et on ajoute une couronne externe
+  // pour que l'événement saute aux yeux dès le coup d'œil.
+  const isDDay = daysLeft === 0;
+  // On cache normalement le today-dot quand la jauge est pleine, mais on
+  // garde une exception pour le jour J : c'est justement là qu'on veut
+  // le plus le voir (dot amplifié + couronne externe).
+  const showToday = progress > 0.002 && (progress < 1.0 || isDDay);
 
-  // Single Path holding all tick segments — one native draw call regardless
-  // of totalDays, uniform color, never recomputed after mount.
-  const ticksD = useMemo(() => {
+  // Deux Path pour les ticks — une passe unique sur `totalDays`, on trie
+  // chaque segment dans `passed` (i < dayInPhase : jour franchi) ou
+  // `unpassed` (jour à venir). Chaque chaîne alimente un <Path> dédié,
+  // ce qui garde deux draw calls au total quel que soit `totalDays`.
+  const ticksPaths = useMemo(() => {
     const tickInner = radius - strokeWidth / 2 - 4;
     const tickOuter = radius - strokeWidth / 2 + 4;
-    let d = '';
+    let passed = '';
+    let unpassed = '';
     for (let i = 0; i < totalDays; i++) {
       const angle = (i / totalDays) * 2 * Math.PI - Math.PI / 2;
       const x1 = cx + Math.cos(angle) * tickInner;
       const y1 = cy + Math.sin(angle) * tickInner;
       const x2 = cx + Math.cos(angle) * tickOuter;
       const y2 = cy + Math.sin(angle) * tickOuter;
-      d += 'M' + x1.toFixed(1) + ' ' + y1.toFixed(1) + ' L' + x2.toFixed(1) + ' ' + y2.toFixed(1) + ' ';
+      const seg = 'M' + x1.toFixed(1) + ' ' + y1.toFixed(1) +
+                  ' L' + x2.toFixed(1) + ' ' + y2.toFixed(1) + ' ';
+      if (i < dayInPhase) passed += seg;
+      else unpassed += seg;
     }
-    return d;
-  }, [radius, strokeWidth, cx, cy, totalDays]);
+    return { passed, unpassed };
+  }, [radius, strokeWidth, cx, cy, totalDays, dayInPhase]);
 
   const clipId = useMemo(() => `liquidClip-${Math.round(size)}`, [size]);
   const gradientId = useMemo(() => `liquidGrad-${Math.round(size)}`, [size]);
@@ -282,6 +306,12 @@ export function CycleRing({
   const todayGlowAnimatedProps = useAnimatedProps(() => {
     'worklet';
     const pulse = 0.5 + 0.5 * Math.sin(pulsePhase.value);
+    if (isDDay) {
+      return {
+        r: strokeWidth * 1.1 + pulse * 5.5,
+        opacity: 0.55 + 0.40 * pulse,
+      } as any;
+    }
     return {
       r: strokeWidth * 0.75 + pulse * 3.0,
       opacity: 0.45 + 0.35 * pulse,
@@ -291,8 +321,25 @@ export function CycleRing({
   const todayCoreAnimatedProps = useAnimatedProps(() => {
     'worklet';
     const pulse = 0.5 + 0.5 * Math.sin(pulsePhase.value);
+    if (isDDay) {
+      return {
+        r: strokeWidth * 0.52 + pulse * 1.8,
+      } as any;
+    }
     return {
       r: strokeWidth * 0.36 + pulse * 1.2,
+    } as any;
+  });
+
+  // Couronne externe du jour J — second anneau plus large et plus lent
+  // (cos → déphasé d'un quart par rapport au pulse principal) pour créer
+  // une respiration entrelacée qui attire l'œil sans clignoter.
+  const dDayHaloAnimatedProps = useAnimatedProps(() => {
+    'worklet';
+    const halo = 0.5 + 0.5 * Math.cos(pulsePhase.value);
+    return {
+      r: strokeWidth * 1.4 + halo * 10.0,
+      opacity: 0.12 + 0.28 * halo,
     } as any;
   });
 
@@ -357,24 +404,28 @@ export function CycleRing({
     ? 'rgba(126, 228, 255, 0.32)' // cyan bloom on dark
     : 'rgba(95, 195, 215, 0.30)'; // teal bloom on light
 
-  // L3 — grain. 35 small cyan glints with pseudo-random phase offsets
-  // (hash-derived so positions & brightness look randomized without
-  // needing a seeded RNG). Denser than before for a richer glitter.
-  const SPARKLE_COUNT = 35;
-  const ARC_START = 0.04;
-  const ARC_END = 0.96;
+  // L3 — grain. Une paillette par tick (barre de jour) + une entre
+  // chaque paire de ticks consécutifs. Positions absolues sur le cadran,
+  // révélées progressivement au fur et à mesure que la jauge se remplit.
+  //
+  // Pour `totalDays = N` jours : 2N emplacements (j = 0..2N-1)
+  //   • j pair   → tick       à fraction j/(2N)
+  //   • j impair → interstice à fraction j/(2N)
+  // Seuls les emplacements j < 2 * dayInPhase sont rendus, ce qui donne
+  // une paillette pour chaque portion de journée déjà vécue.
+  const sparkleCount = 2 * dayInPhase;
 
   const corePathProps = useAnimatedProps(() => {
     'worklet';
     let d = '';
-    for (let i = 0; i < SPARKLE_COUNT; i++) {
-      const frac = ARC_START + (i / (SPARKLE_COUNT - 1)) * (ARC_END - ARC_START);
-      const angle = -Math.PI / 2 + progress * frac * 2 * Math.PI;
+    const twoN = 2 * totalDays;
+    for (let j = 0; j < sparkleCount; j++) {
+      const angle = (j / twoN) * 2 * Math.PI - Math.PI / 2;
       const x = cx + radius * Math.cos(angle);
       const y = cy + radius * Math.sin(angle);
-      // Pseudo-random phase offset derived from index hash — breaks the
-      // obvious wave pattern so glints twinkle independently.
-      const hash = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+      // Décalage de phase déterministe par hash — chaque paillette
+      // scintille indépendamment sans avoir besoin de RNG seedé.
+      const hash = Math.sin(j * 12.9898 + 78.233) * 43758.5453;
       const phi = (hash - Math.floor(hash)) * 2 * Math.PI;
       const shimmer = 0.5 + 0.5 * Math.sin(sparklePhase.value + phi);
       const r = 0.8 + shimmer * 1.0; // 0.8 → 1.8 px
@@ -390,12 +441,12 @@ export function CycleRing({
   const haloPathProps = useAnimatedProps(() => {
     'worklet';
     let d = '';
-    for (let i = 0; i < SPARKLE_COUNT; i++) {
-      const frac = ARC_START + (i / (SPARKLE_COUNT - 1)) * (ARC_END - ARC_START);
-      const angle = -Math.PI / 2 + progress * frac * 2 * Math.PI;
+    const twoN = 2 * totalDays;
+    for (let j = 0; j < sparkleCount; j++) {
+      const angle = (j / twoN) * 2 * Math.PI - Math.PI / 2;
       const x = cx + radius * Math.cos(angle);
       const y = cy + radius * Math.sin(angle);
-      const hash = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+      const hash = Math.sin(j * 12.9898 + 78.233) * 43758.5453;
       const phi = (hash - Math.floor(hash)) * 2 * Math.PI;
       const shimmer = 0.4 + 0.6 * Math.sin(sparklePhase.value + phi);
       const r = 1.8 + shimmer * 2.2; // 1.8 → 4.0 px halo
@@ -406,6 +457,16 @@ export function CycleRing({
            (x + r).toFixed(2) + ' ' + y.toFixed(2) + ' Z ';
     }
     return { d } as any;
+  });
+
+  // Ticks « passés » — respiration cyan douce synchronisée avec les
+  // paillettes. L'opacité oscille dans une plage haute (0.75 → 1.0) pour
+  // que chaque barre de jour franchi reste franchement lisible tout en
+  // ayant un léger pouls vivant.
+  const passedTicksAnimatedProps = useAnimatedProps(() => {
+    'worklet';
+    const shimmer = 0.875 + 0.125 * Math.sin(sparklePhase.value);
+    return { opacity: shimmer } as any;
   });
 
   // L4 — escape sparks. 5 animated circles that emerge from a fixed
@@ -573,19 +634,42 @@ export function CycleRing({
           </>
         )}
 
-        {/* Tick marks — single static path */}
-        <Path
-          d={ticksD}
-          stroke={tickColor}
-          strokeWidth={2.5}
-          strokeLinecap="round"
-          opacity={0.5}
-          fill="none"
-        />
+        {/* Ticks à venir — gris, statiques */}
+        {ticksPaths.unpassed !== '' && (
+          <Path
+            d={ticksPaths.unpassed}
+            stroke={tickColor}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            opacity={0.5}
+            fill="none"
+          />
+        )}
+        {/* Ticks franchis — cyan, pouls UI-thread (dayInPhase barres) */}
+        {ticksPaths.passed !== '' && (
+          <AnimatedPath
+            d={ticksPaths.passed}
+            stroke={coreColor}
+            strokeWidth={2.8}
+            strokeLinecap="round"
+            fill="none"
+            animatedProps={passedTicksAnimatedProps}
+          />
+        )}
 
-        {/* Today pulse — UI-thread animated r/opacity */}
+        {/* Today pulse — UI-thread animated r/opacity.
+            Au jour J, une couronne externe (pulse lent, déphasé) vient
+            s'ajouter au glow + core pour marquer clairement l'événement. */}
         {showToday && (
           <G>
+            {isDDay && (
+              <AnimatedCircle
+                cx={todayX}
+                cy={todayY}
+                fill={todayGlowColor}
+                animatedProps={dDayHaloAnimatedProps}
+              />
+            )}
             <AnimatedCircle
               cx={todayX}
               cy={todayY}

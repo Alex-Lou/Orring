@@ -11,6 +11,7 @@ import { ActionButton } from '../src/components/ActionButton';
 import { ConfirmActionModal } from '../src/components/ConfirmActionModal';
 import { Onboarding } from '../src/components/Onboarding';
 import { TempRemovalCountdown } from '../src/components/TempRemovalCountdown';
+import { WithdrawalGauge } from '../src/components/WithdrawalGauge';
 import {
   getCycleInfoFromLogs, formatDateFr, formatDateTimeFr,
   RING_IN_DAYS, RING_OUT_DAYS,
@@ -25,7 +26,7 @@ function getGreetingKey(): string {
   const h = new Date().getHours();
   if (h >= 5 && h < 12) return 'greetingMorning';
   if (h >= 12 && h < 18) return 'greetingAfternoon';
-  if (h >= 18 && h < 22) return 'greetingEvening';
+  if (h >= 18 && h < 21) return 'greetingEvening';
   return 'greetingNight';
 }
 
@@ -33,15 +34,26 @@ function getGreetingKey(): string {
 // style, tightly framed and uniformly sized.
 //   - Morning (5h–12h): Matin.png    (sparrow on a branch, sunrise)
 //   - Afternoon (12h–18h): ApresMidi.png (sun through clouds)
-//   - Evening (18h–22h): Soir.png   (setting sun over the ocean)
-//   - Night (22h–5h): Nuit.png      (crescent moon, starry sky)
-type GreetingIcon = { kind: 'image'; value: 'morning' | 'sun' | 'sunset' | 'night' };
-function getGreetingIcon(): GreetingIcon {
+//   - Evening (18h–21h): Soir.png   (setting sun over the ocean)
+//   - Night (21h–5h): Nuit.png      (crescent moon, starry sky)
+type GreetingIconKey = 'morning' | 'sun' | 'sunset' | 'night';
+// Module-scope `require()` registry — Metro resolves each path once, at bundle
+// time, and dedupes. Keeping these at the top level (vs. a conditional
+// `require()` inside an IIFE) has proved more reliable on Android release
+// builds where asset resolution inside deeply-nested render functions
+// occasionally misses the static analysis pass.
+const GREETING_ICON_SRCS: Record<GreetingIconKey, number> = {
+  morning: require('../assets/icones/Matin.png'),
+  sun: require('../assets/icones/ApresMidi.png'),
+  sunset: require('../assets/icones/Soir.png'),
+  night: require('../assets/icones/Nuit.png'),
+};
+function getGreetingIconKey(): GreetingIconKey {
   const h = new Date().getHours();
-  if (h >= 5 && h < 12) return { kind: 'image', value: 'morning' };
-  if (h >= 12 && h < 18) return { kind: 'image', value: 'sun' };
-  if (h >= 18 && h < 22) return { kind: 'image', value: 'sunset' };
-  return { kind: 'image', value: 'night' };
+  if (h >= 5 && h < 12) return 'morning';
+  if (h >= 12 && h < 18) return 'sun';
+  if (h >= 18 && h < 21) return 'sunset';
+  return 'night';
 }
 
 // Pet next to the greeting — awake variant in daytime, sleeping variant after 18h.
@@ -50,8 +62,8 @@ type PetState = 'none' | 'awake' | 'evening' | 'night';
 function getPetState(): PetState {
   const h = new Date().getHours();
   if (h >= 5 && h < 18) return 'awake';
-  if (h >= 18 && h < 22) return 'evening';
-  return 'night'; // 22h–5h
+  if (h >= 18 && h < 21) return 'evening';
+  return 'night'; // 21h–5h
 }
 
 export default function MyCycleScreen() {
@@ -194,10 +206,29 @@ export default function MyCycleScreen() {
                         ]}
                         resizeMode="contain"
                       />
-                      {petState === 'night' && (
+                      {/* L'oiseau dort dès 18h (soir + nuit) : on affiche
+                          le ZZZ dans les deux états pour que le repos soit
+                          lisible dès le coucher de soleil. Le ZZZ est
+                          positionné du côté de la tête de l'oiseau — quand
+                          l'oiseau est flippé (LTR), la tête bascule à gauche,
+                          donc le ZZZ doit suivre. */}
+                      {!isAwake && (
                         <Image
                           source={require('../assets/ZZZNoBg.png')}
-                          style={styles.petZzz}
+                          style={[
+                            styles.petZzz,
+                            // Position — le ZZZ suit la tête de l'oiseau : côté
+                            // gauche quand le pet est flippé (LTR sleeping),
+                            // côté droit sinon.
+                            flipBird && { left: -40, right: undefined },
+                            // Orientation — en LTR on miroite le ZZZ pour que
+                            // la fin pointue pointe vers le haut (lecture
+                            // naturelle). En arabe (RTL) on conserve l'orientation
+                            // d'origine du PNG, qui lit déjà dans le bon sens.
+                            !isRTL
+                              ? { transform: [{ rotate: '-40deg' }, { scaleX: -1 }] }
+                              : null,
+                          ]}
                           resizeMode="contain"
                         />
                       )}
@@ -235,17 +266,12 @@ export default function MyCycleScreen() {
                   // A debug override (set from the drawer header on this
                   // screen) lets us preview any slot without waiting for the
                   // clock. When the override is `null` we fall back to the
-                  // time-based resolver.
-                  const auto = getGreetingIcon();
-                  const resolved = debugIconOverride ?? auto.value;
-                  const src =
-                    resolved === 'morning'
-                      ? require('../assets/icones/Matin.png')
-                      : resolved === 'sun'
-                        ? require('../assets/icones/ApresMidi.png')
-                        : resolved === 'sunset'
-                          ? require('../assets/icones/Soir.png')
-                          : require('../assets/icones/Nuit.png');
+                  // time-based resolver. The PNG registry lives at module
+                  // scope (GREETING_ICON_SRCS) so Metro always statically
+                  // resolves each asset.
+                  const resolved: GreetingIconKey =
+                    (debugIconOverride as GreetingIconKey | null) ?? getGreetingIconKey();
+                  const src = GREETING_ICON_SRCS[resolved];
                   // The latest Nuit.png is tightly framed (moon + night sky
                   // reach every edge of the canvas, ~100% fill) — the other
                   // three PNGs only fill ~85% of their canvas. So at an equal
@@ -321,23 +347,34 @@ export default function MyCycleScreen() {
               ? { backgroundColor: darkMode ? 'rgba(158,198,164,0.18)' : colors.ringInLight }
               : { backgroundColor: darkMode ? 'rgba(181,165,226,0.18)' : colors.ringOutLight },
           ]}>
-            <Text style={styles.pillEmoji}>{isRingIn ? '⭕' : '✋'}</Text>
             <Text style={[
               styles.pillText,
               { color: isRingIn
                   ? (darkMode ? '#9EC6A4' : '#4A6A4E')
                   : (darkMode ? '#C9BCEC' : '#8E5A77') },
             ]}>
-              {isRingIn ? t('ringInPlace') : t('ringRemoved')}
+              {isRingIn ? `⭕ ${t('ringInPlace')}` : `✋ ${t('ringRemoved')}`}
             </Text>
           </View>
           <View style={[styles.pill, { backgroundColor: darkMode ? 'rgba(181,165,226,0.22)' : theme.primaryLight }]}>
-            <Text style={styles.pillEmoji}>📅</Text>
             <Text style={[styles.pillText, { color: theme.primaryDark }]}>
-              {t('dayXOf28', { day: info.currentDay })}
+              📅 {t('dayXOf28', { day: info.currentDay })}
             </Text>
           </View>
         </Animated.View>
+
+        {/* Withdrawal-period gauge — affichée UNIQUEMENT pendant la pause (ring-out).
+            Contextualise visuellement les 7 jours d'attente avant la prochaine
+            insertion (marqueur glissant, countdown, pulse). */}
+        {!isRingIn && (
+          <Animated.View entering={FadeInUp.delay(550).duration(500).springify()}>
+            <WithdrawalGauge
+              dayInPause={Math.max(1, info.currentDay - RING_IN_DAYS)}
+              totalPauseDays={RING_OUT_DAYS}
+              daysUntilInsertion={info.daysUntilChange}
+            />
+          </Animated.View>
+        )}
 
         {/* Action button — main interaction */}
         <Animated.View entering={FadeInUp.delay(600).duration(600).springify()}>
@@ -375,23 +412,17 @@ export default function MyCycleScreen() {
           </Text>
           {info.insertionDateTime && (
             <Text style={[styles.dateDetail, { color: theme.text }, isRTL && styles.rtlText]}>
-              {isRTL
-                ? `${t('insertedOn', { date: formatDateTimeFr(info.insertionDateTime) })} ⭕`
-                : `⭕ ${t('insertedOn', { date: formatDateTimeFr(info.insertionDateTime) })}`}
+              ⭕ {t('insertedOn', { date: formatDateTimeFr(info.insertionDateTime) })}
             </Text>
           )}
           {info.removalDateTime && (
             <Text style={[styles.dateDetail, { color: theme.text }, isRTL && styles.rtlText]}>
-              {isRTL
-                ? `${t('removalShort')} : ${formatDateTimeFr(info.removalDateTime)} ♻️`
-                : `♻️ ${t('removalShort')} : ${formatDateTimeFr(info.removalDateTime)}`}
+              ♻️ {`${t('removalShort')} : ${formatDateTimeFr(info.removalDateTime)}`}
             </Text>
           )}
           {info.nextInsertionDateTime && (
             <Text style={[styles.dateDetail, { color: theme.text }, isRTL && styles.rtlText]}>
-              {isRTL
-                ? `${t('nextCycle')} : ${formatDateTimeFr(info.nextInsertionDateTime)} 🔄`
-                : `🔄 ${t('nextCycle')} : ${formatDateTimeFr(info.nextInsertionDateTime)}`}
+              🔄 {`${t('nextCycle')} : ${formatDateTimeFr(info.nextInsertionDateTime)}`}
             </Text>
           )}
         </Animated.View>
@@ -488,6 +519,7 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     position: 'relative',
+    overflow: 'visible',
   },
   petBird: {
     width: 44,
@@ -521,6 +553,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12, borderRadius: borderRadius.full, gap: 6,
   },
   pillEmoji: { fontSize: 16 },
+  pillIcon: { marginRight: 2 },
   pillText: { fontSize: fontSize.sm, fontWeight: fontWeight.bold },
 
   actionRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
@@ -531,7 +564,13 @@ const styles = StyleSheet.create({
   },
   explainTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, marginBottom: 6 },
   explainBody: { fontSize: fontSize.md, lineHeight: 24 },
-  dateDetail: { fontSize: fontSize.sm, marginTop: 6, textTransform: 'capitalize' },
+  dateDetail: { fontSize: fontSize.sm, textTransform: 'capitalize', flexShrink: 1 },
+  dateDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
 
   periodCard: {
     borderRadius: borderRadius.xl, padding: spacing.lg,

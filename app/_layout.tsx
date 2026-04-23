@@ -137,16 +137,17 @@ function GreetingIconDebugPicker() {
                   ]}
                 >
                   {opt.src ? (
-                    <Image
-                      source={opt.src}
-                      style={[
-                        debugStyles.menuItemIcon,
-                        opt.key === 'night' && { width: 22, height: 22 },
-                      ]}
-                      resizeMode="contain"
-                    />
+                    <View style={debugStyles.menuItemIconBox}>
+                      <Image
+                        source={opt.src}
+                        style={{ width: opt.key === 'night' ? 22 : 26, height: opt.key === 'night' ? 22 : 26 }}
+                        resizeMode="contain"
+                      />
+                    </View>
                   ) : (
-                    <Text style={debugStyles.menuItemEmoji}>🕒</Text>
+                    <View style={debugStyles.menuItemIconBox}>
+                      <Text style={debugStyles.menuItemEmoji}>🕒</Text>
+                    </View>
                   )}
                   <Text
                     style={[
@@ -201,6 +202,16 @@ const debugStyles = StyleSheet.create({
     paddingVertical: 10,
   },
   menuItemIcon: { width: 26, height: 26 },
+  // Box fixe garantit que l'icône (Image ou 🕒) occupe le même slot visuel
+  // même si une image échoue à se charger ou se résout à 0x0 — l'utilisateur
+  // voyait le dropdown s'afficher avec des labels "alignés" mais sans
+  // glyphe, symptôme d'une image rendue à taille nulle.
+  menuItemIconBox: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   menuItemEmoji: { fontSize: 20 },
   menuItemLabel: { fontSize: 14, fontWeight: '600' },
 });
@@ -311,7 +322,15 @@ export default function RootLayout() {
     return {
       title: config ? t(config.titleKey) : route.name,
       drawerIcon: config
-        ? ({ color }: { color: string }) => <Ionicons name={config.icon} size={22} color={color} />
+        ? ({ color }: { color: string }) => {
+            if (route.name === 'history') {
+              return <Image source={require('../assets/iconesMetier/IconeHistorique.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />;
+            }
+            if (route.name === 'calendar') {
+              return <Image source={require('../assets/iconesMetier/IconeCalendrier.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />;
+            }
+            return <Ionicons name={config.icon} size={22} color={color} />;
+          }
         : undefined,
       headerStyle: { backgroundColor: theme.headerBg, elevation: 0, shadowOpacity: 0 },
       headerTintColor: theme.tint,

@@ -82,7 +82,7 @@ export function CycleHistoryCard({ entry, index, onDelete }: CycleHistoryCardPro
           actual={entry.actualInsertDate ? formatDateFr(entry.actualInsertDate, 'EEE dd MMM') : null}
         />
         <DetailRow
-          emoji="✋"
+          emoji="♻️"
           label={t('removal')}
           theoretical={formatDateFr(entry.theoreticalRemoveDate, 'EEE dd MMM')}
           actual={entry.actualRemoveDate ? formatDateFr(entry.actualRemoveDate, 'EEE dd MMM') : null}

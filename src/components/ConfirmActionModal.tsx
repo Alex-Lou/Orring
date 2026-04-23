@@ -29,7 +29,6 @@ export function ConfirmActionModal({ visible, action, isEarly = false, onConfirm
   const [notifyAt3h, setNotifyAt3h] = useState(true);
 
   const isInsert = action === 'insert';
-  const emoji = isInsert ? '⭕' : '♻️';
   const title = isInsert ? t('insertionTitle') : t('removalTitle');
   const color = isInsert ? colors.ringIn : colors.ringOut;
 
@@ -56,7 +55,7 @@ export function ConfirmActionModal({ visible, action, isEarly = false, onConfirm
       <Pressable style={styles.overlay} onPress={handleClose}>
         <Pressable style={[styles.card, { backgroundColor: theme.surface }]}>
           <Animated.View entering={FadeIn.duration(200)}>
-            <Text style={styles.emoji}>{emoji}</Text>
+            <Text style={styles.emoji}>{isInsert ? '⭕' : '♻️'}</Text>
             <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
 
             {/* Selected datetime display */}
