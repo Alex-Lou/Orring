@@ -58,3 +58,8 @@ assets/king.png
 # Local build logs
 build-out/
 
+# Halo-strip backups (pristine copies of drawer-icon PNGs kept locally
+# so we can rerun the flood-fill with different params without losing
+# the originals). Not needed in the repo.
+assets/iconesMetier/_halo_backup/
+

@@ -32,6 +32,57 @@ const ROUTE_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; title
   settings: { icon: 'settings-outline', titleKey: 'settingsDrawer' },
 };
 
+// Drawer "métier" icons are PNGs exported from design tooling that carry a
+// subtle soft-shadow halo around the transparent background. On light themes
+// the halo is invisible (white-on-white), but against the dark drawer bg it
+// reads as a dim white square behind every icon. We wrap the <Image> in a
+// circular-masked, transparent-bg <View> so the halo is clipped to the icon
+// silhouette — no more boxy glow. `fadeDuration={0}` also suppresses the
+// brief Android default fade-in that can flash the image backing color.
+const DRAWER_ICON_PNGS: Record<string, any> = {
+  index: require('../assets/iconesMetier/MonCycleIcone.png'),
+  calendar: require('../assets/iconesMetier/IconeCalendrier.png'),
+  history: require('../assets/iconesMetier/IconeHistorique.png'),
+  explanations: require('../assets/iconesMetier/ExplicationIcone.png'),
+  settings: require('../assets/iconesMetier/ReglageIcone.png'),
+};
+
+function DrawerMetierIcon({ routeName }: { routeName: string }) {
+  const src = DRAWER_ICON_PNGS[routeName];
+  if (!src) return null;
+  return (
+    <View style={drawerIconStyles.box}>
+      <Image
+        source={src}
+        style={drawerIconStyles.img}
+        resizeMode="contain"
+        fadeDuration={0}
+      />
+    </View>
+  );
+}
+
+const drawerIconStyles = StyleSheet.create({
+  box: {
+    width: 26,
+    height: 26,
+    // Circular clip hides the rectangular soft-glow halo baked into the
+    // pastel PNGs, which otherwise reads as a white square on the dark
+    // drawer background. Radius slightly > half so the corners are fully
+    // rounded without clipping the central artwork.
+    borderRadius: 13,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  img: {
+    width: 24,
+    height: 24,
+    backgroundColor: 'transparent',
+  },
+});
+
 
 // ─── Greeting-icon debug picker (drawer header, index screen only) ───
 //
@@ -322,15 +373,10 @@ export default function RootLayout() {
     return {
       title: config ? t(config.titleKey) : route.name,
       drawerIcon: config
-        ? ({ color }: { color: string }) => {
-            if (route.name === 'history') {
-              return <Image source={require('../assets/iconesMetier/IconeHistorique.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />;
-            }
-            if (route.name === 'calendar') {
-              return <Image source={require('../assets/iconesMetier/IconeCalendrier.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />;
-            }
-            return <Ionicons name={config.icon} size={22} color={color} />;
-          }
+        ? ({ color }: { color: string }) =>
+            DRAWER_ICON_PNGS[route.name]
+              ? <DrawerMetierIcon routeName={route.name} />
+              : <Ionicons name={config.icon} size={22} color={color} />
         : undefined,
       headerStyle: { backgroundColor: theme.headerBg, elevation: 0, shadowOpacity: 0 },
       headerTintColor: theme.tint,

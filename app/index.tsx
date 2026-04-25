@@ -179,9 +179,27 @@ export default function MyCycleScreen() {
                 ]}
               >
                 {(() => {
-                  const petState = getPetState();
+                  // Derive the pet state from the debug icon override when
+                  // it's set so the dropdown in the header forces the bird
+                  // + ZZZ to the matching state (otherwise they'd keep
+                  // reading the real clock and ignore the picker).
+                  // Mapping: morning/sun → awake · sunset → evening · night → night
+                  const overridePet: PetState | null =
+                    debugIconOverride === 'morning' || debugIconOverride === 'sun'
+                      ? 'awake'
+                      : debugIconOverride === 'sunset'
+                        ? 'evening'
+                        : debugIconOverride === 'night'
+                          ? 'night'
+                          : null;
+                  const petState = overridePet ?? getPetState();
                   if (petState === 'none') return null;
                   const isAwake = petState === 'awake';
+                  // ZZZ is shown ONLY in the night slot (21h–5h). During the
+                  // evening slot (18h–21h) the bird already sleeps but stays
+                  // "quiet" — no Z's yet — matching the user's mental model
+                  // of "dodo profond seulement la nuit".
+                  const isNight = petState === 'night';
                   // Natural artwork faces right. In LTR the awake bird sits
                   // on the LEFT of the greeting and already points at the
                   // text (no flip). The sleeping bird is mirrored for
@@ -206,27 +224,21 @@ export default function MyCycleScreen() {
                         ]}
                         resizeMode="contain"
                       />
-                      {/* L'oiseau dort dès 18h (soir + nuit) : on affiche
-                          le ZZZ dans les deux états pour que le repos soit
-                          lisible dès le coucher de soleil. Le ZZZ est
-                          positionné du côté de la tête de l'oiseau — quand
-                          l'oiseau est flippé (LTR), la tête bascule à gauche,
-                          donc le ZZZ doit suivre. */}
-                      {!isAwake && (
+                      {/* ZZZ affiché UNIQUEMENT la nuit (21h-5h), pas le soir.
+                          Position : juste à CÔTÉ (pas au-dessus) de la tête du
+                          piaf — à droite en LTR, à gauche en arabe. Le PNG
+                          ZZZNoBg.png est déjà orienté lisible donc aucun
+                          transform n'est appliqué. */}
+                      {isNight && (
                         <Image
                           source={require('../assets/ZZZNoBg.png')}
                           style={[
                             styles.petZzz,
-                            // Position — le ZZZ suit la tête de l'oiseau : côté
-                            // gauche quand le pet est flippé (LTR sleeping),
-                            // côté droit sinon.
-                            flipBird && { left: -40, right: undefined },
-                            // Orientation — en LTR on miroite le ZZZ pour que
-                            // la fin pointue pointe vers le haut (lecture
-                            // naturelle). En arabe (RTL) on conserve l'orientation
-                            // d'origine du PNG, qui lit déjà dans le bon sens.
-                            !isRTL
-                              ? { transform: [{ rotate: '-40deg' }, { scaleX: -1 }] }
+                            // Arabe (RTL) : miroir horizontal de la position
+                            // LTR — ZZZ côté gauche du wrapper, toujours sans
+                            // flip pour garder les Z lisibles.
+                            isRTL
+                              ? { left: -18, right: undefined }
                               : null,
                           ]}
                           resizeMode="contain"
@@ -510,7 +522,12 @@ const styles = StyleSheet.create({
   // at the far left and collide with the TempRemovalCountdown on the right.
   // gap 0 — we use explicit negative margins on the icon instead, and we want
   // the greeting text to sit right next to the bird in LTR (user preference).
-  greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+  // overflow:'visible' is critical — the ZZZ image inside petWrap sits at
+  // right:-30 (beside the bird's head, past the 46px wrapper's right edge).
+  // Android clips overflow by default even when the child has
+  // overflow:'visible', so we also mark the containing row visible to keep
+  // the absolutely-positioned ZZZ from being cut off.
+  greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 0, overflow: 'visible' },
   // Applied on top of greetingRow / titleRow when the active language is RTL
   // so that bird + emoji land on the mirrored side of the greeting.
   rtlRow: { flexDirection: 'row-reverse' },
@@ -527,13 +544,22 @@ const styles = StyleSheet.create({
   },
   petZzz: {
     position: 'absolute',
-    top: -30,
-    right: -40,
-    width: 72,
-    height: 72,
-    // Tilted so the small end of the "Zzz" points up and slightly outward,
-    // like a classic sleep motif hovering near the bird's head.
-    transform: [{ rotate: '-40deg' }],
+    // Placed BESIDE the bird's head, not above it. After flipBird in LTR
+    // sleeping mode the head sits on the right half of the 46×46 wrapper,
+    // so we push the ZZZ well past the right edge (right:-30) and only
+    // slightly up (top:-8) — that puts the ZZZ level with the head, just
+    // to its right. Size kept at 44 (down from 56) so it doesn't sprawl
+    // over the greeting text next to the bird.
+    top: -14,
+    right: -18,
+    width: 44,
+    height: 44,
+    // Raise above the sibling <Text> that paints the greeting line.
+    // On Android the Text can cover absolutely-positioned siblings that
+    // overflow into its area; elevation forces the ZZZ on top in the
+    // native z-order. zIndex alone isn't always enough on Android.
+    zIndex: 20,
+    elevation: 20,
   },
   // Matches the visual weight of the adjacent emoji in the other time-of-day
   // variants. Rendered as a sibling of the greeting <Text>, not inline.
