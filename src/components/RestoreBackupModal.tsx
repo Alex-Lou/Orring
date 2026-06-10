@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useConfirm } from './ConfirmProvider';
 import { parseBackup, type BackupPayload } from '../utils/backup';
 import { useTheme } from '../theme/useTheme';
-import { styles } from '../../app/settings.styles';
+import { styles } from '../styles/settings.styles';
 
 interface RestoreBackupModalProps {
   visible: boolean;

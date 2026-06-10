@@ -5,7 +5,7 @@ import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '..
 import { CyclePhaseBar } from './CyclePhaseBar';
 import { useTheme } from '../theme/useTheme';
 import { useTranslation } from 'react-i18next';
-import { CycleHistoryEntry, formatDateFr, CYCLE_LENGTH } from '../utils/cycle';
+import { CycleHistoryEntry, formatDateFr, getDayInCycle, CYCLE_LENGTH } from '../utils/cycle';
 
 interface CycleHistoryCardProps {
   entry: CycleHistoryEntry;
@@ -34,8 +34,12 @@ export function CycleHistoryCard({ entry, index, onDelete }: CycleHistoryCardPro
   const { t } = useTranslation();
   const chipStyle = getStatusChipStyle(entry.status);
   const chipLabel = getStatusChipLabel(entry.status, t);
+  // Day-aligned (startOfDay on both ends via getDayInCycle) instead of raw
+  // millis — so the history day-counter and its phase marker can't drift by
+  // a day around midnight/DST and always match the home screen. Anchored on
+  // the ACTUAL insertion when known.
   const currentDay = entry.status === 'current'
-    ? Math.min(Math.floor((Date.now() - entry.theoreticalInsertDate.getTime()) / (1000 * 60 * 60 * 24)) + 1, CYCLE_LENGTH)
+    ? Math.min(getDayInCycle(entry.actualInsertDate ?? entry.theoreticalInsertDate, new Date()), CYCLE_LENGTH)
     : entry.status === 'past' ? CYCLE_LENGTH : 0;
 
   return (

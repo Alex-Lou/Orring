@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import Animated, { FadeIn, FadeInUp, FadeOut } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInUp, FadeOut, ZoomIn } from 'react-native-reanimated';
 import { styles } from './Onboarding.styles';
 
 interface WelcomeStepProps {
@@ -24,6 +24,12 @@ export function WelcomeStep({ name, onDone, t, theme }: WelcomeStepProps) {
       exiting={FadeOut.duration(500)}
       style={styles.welcomeWrap}
     >
+      <Animated.Image
+        entering={ZoomIn.delay(150).duration(700).springify()}
+        source={require('../../../assets/OrringBluePetNoBgSalute.png')}
+        style={styles.welcomeBird}
+        resizeMode="contain"
+      />
       <Animated.Text entering={FadeInUp.delay(300).duration(600)} style={[styles.welcomeText, { color: theme.primaryDark }]}>
         {line}
       </Animated.Text>

@@ -66,3 +66,11 @@ releases/
 # the originals). Not needed in the repo.
 assets/iconesMetier/_halo_backup/
 
+# Knowledge graph + dev handoff — local tooling, never shipped or committed
+graphify-out/
+CLAUDE.md
+HANDOFF.md
+
+# Unused orphan asset (not referenced anywhere)
+assets/iconesMetier/ChatGPT*
+

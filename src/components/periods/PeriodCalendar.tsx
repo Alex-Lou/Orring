@@ -29,7 +29,8 @@ import type { PeriodStats } from '../../utils/periods';
 import type { PeriodLog } from '../../store/cycleStore';
 import type { useTheme } from '../../theme/useTheme';
 import type { useTranslation } from 'react-i18next';
-import { styles } from '../../../app/periods.styles';
+import { useIsRTL } from '../../i18n/useIsRTL';
+import { styles } from '../../styles/periods.styles';
 
 // Day-cell color per intensity. Kept consistent with PeriodLogModal so
 // users see the same swatch in the modal preview and the calendar.
@@ -85,6 +86,7 @@ export function PeriodCalendar({
   // a style array, exactly as before.
   predictedPulseStyle: any;
 }) {
+  const isRTL = useIsRTL();
   return (
     <Animated.View entering={FadeInUp.delay(350).duration(500)}>
       <View style={[styles.monthBar, { backgroundColor: theme.surface }]}>
@@ -93,7 +95,7 @@ export function PeriodCalendar({
           style={({ pressed }) => [styles.monthBtn, pressed && { opacity: 0.5 }]}
           hitSlop={8}
         >
-          <Text style={[styles.monthBtnLabel, { color: theme.primaryDark }]}>‹</Text>
+          <Text style={[styles.monthBtnLabel, { color: theme.primaryDark }]}>{isRTL ? '›' : '‹'}</Text>
         </Pressable>
         <View style={{ flex: 1, alignItems: 'center' }}>
           <Text style={[styles.monthTitle, { color: theme.text }]}>
@@ -110,7 +112,7 @@ export function PeriodCalendar({
           ]}
           hitSlop={8}
         >
-          <Text style={[styles.monthBtnLabel, { color: theme.primaryDark }]}>›</Text>
+          <Text style={[styles.monthBtnLabel, { color: theme.primaryDark }]}>{isRTL ? '‹' : '›'}</Text>
         </Pressable>
       </View>
 

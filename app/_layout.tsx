@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
 import { ErrorBoundaryProps } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,11 +18,15 @@ import { useTranslation } from 'react-i18next';
 import { useIsRTL } from '../src/i18n/useIsRTL';
 
 const LIGHT = {
-  bg: '#F6F2FB', headerBg: '#EFE8F7', tint: '#7F6EBA',
-  text: '#2D2A3A', textSec: '#8B8696', activeBg: '#D9D0EC',
+  // Drawer panel + top header bar held in a soft lavande (NOT near-white):
+  // the previous #F6F2FB / #EFE8F7 read as a harsh white slab at night / in
+  // the evening / for sensitive eyes. Kept in step with the main background
+  // (#E7DDF0) so nothing glares.
+  bg: '#E7DDF0', headerBg: '#DFD4EE', tint: '#7F6EBA',
+  text: '#2D2A3A', textSec: '#8B8696', activeBg: '#D6C9EC',
   // Hairline / soft-edge color — used for the rounded drawer right
   // edge and any other subtle separator. Kept just barely visible.
-  border: 'rgba(45,42,58,0.12)',
+  border: 'rgba(45,42,58,0.10)',
 };
 const DARK = {
   bg: '#1C1829', headerBg: '#2A2440', tint: '#C9BCEC',
@@ -128,6 +132,11 @@ export default function RootLayout() {
   const { t } = useTranslation();
   const theme = darkMode ? DARK : LIGHT;
   const isRTL = useIsRTL();
+  // Landscape: the drawer header eats too much of the short vertical axis,
+  // so we shrink it (smaller bar height + title) to give the screen content
+  // back its room. Portrait keeps the comfortable default.
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isLandscape = winW > winH;
 
   // Silent OTA check at boot — user can apply a ready update via the
   // floating UpdateIndicator without force-closing the app manually.
@@ -165,9 +174,14 @@ export default function RootLayout() {
             <Ionicons name={config.icon} size={22} color={color} />
           )
         : undefined,
+      // Landscape: we ONLY trim the title font — never the bar height or the
+      // status-bar inset. Shrinking those pushed the hamburger up under
+      // Android's system UI / display cutout, making it untouchable. Touch
+      // reachability of the burger beats a few saved pixels, so the safe-area
+      // inset is always preserved and the header keeps its default height.
       headerStyle: { backgroundColor: theme.headerBg, elevation: 0, shadowOpacity: 0 },
       headerTintColor: theme.tint,
-      headerTitleStyle: { fontWeight: '700' as const, fontSize: 18, color: theme.text },
+      headerTitleStyle: { fontWeight: '700' as const, fontSize: isLandscape ? 16 : 18, color: theme.text },
       // Debug: on the "Mon Cycle" screen, expose a dropdown in the header to
       // force any of the four greeting icons without waiting for the clock.
       //
@@ -217,7 +231,7 @@ export default function RootLayout() {
       drawerPosition: (isRTL ? 'right' : 'left') as 'left' | 'right',
       sceneStyle: { backgroundColor: theme.bg },
     };
-  }, [t, theme, language, isRTL]);
+  }, [t, theme, language, isRTL, isLandscape]);
 
   // Boot progress mapping (0 → 1). The numbers are deliberately coarse
   // because we don't get real download progress from expo-updates; they

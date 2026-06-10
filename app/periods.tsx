@@ -52,7 +52,7 @@ import {
   findOpenPeriod,
   type PeriodFlowState,
 } from '../src/utils/periods';
-import { styles } from './periods.styles';
+import { styles } from '../src/styles/periods.styles';
 import { buildSummaryCard } from '../src/components/periods/buildSummaryCard';
 import { IndependenceCard, HowItWorksCard } from '../src/components/periods/PeriodsHelpCards';
 import { usePeriodActions } from '../src/components/periods/usePeriodActions';
@@ -315,39 +315,43 @@ export default function PeriodsScreen() {
             "Annuler la période en cours" only renders when there's
             something to cancel (live `openPeriod` derived from the
             store), keeping the section clean otherwise. */}
-        {periodLogs.length > 0 && (
-          <Animated.View
-            entering={FadeInUp.delay(650).duration(500)}
-            style={styles.resetSection}
-          >
-            {openPeriod && (
-              <Pressable
-                onPress={handleResetCurrentPeriod}
-                style={({ pressed }) => [
-                  styles.resetBtn,
-                  styles.resetBtnSecondary,
-                  pressed && { opacity: 0.55 },
-                ]}
-              >
-                <Text style={[styles.resetBtnSecondaryLabel, { color: theme.textSecondary }]}>
-                  ↩ {t('periodsResetCurrentBtn', { defaultValue: 'Annuler la période en cours' })}
-                </Text>
-              </Pressable>
-            )}
+        {/* Reset section — always rendered so the periods-only reset is
+            discoverable. "Annuler la période en cours" only shows with an
+            open period; "Effacer toutes mes périodes" is always visible but
+            disabled (greyed) until there is at least one period to erase. */}
+        <Animated.View
+          entering={FadeInUp.delay(650).duration(500)}
+          style={styles.resetSection}
+        >
+          {openPeriod && (
             <Pressable
-              onPress={handleResetAllPeriods}
+              onPress={handleResetCurrentPeriod}
               style={({ pressed }) => [
                 styles.resetBtn,
-                styles.resetBtnDanger,
+                styles.resetBtnSecondary,
                 pressed && { opacity: 0.55 },
               ]}
             >
-              <Text style={styles.resetBtnDangerLabel}>
-                🗑 {t('periodsResetAllBtn', { defaultValue: 'Effacer toutes mes périodes' })}
+              <Text style={[styles.resetBtnSecondaryLabel, { color: theme.textSecondary }]}>
+                ↩ {t('periodsResetCurrentBtn', { defaultValue: 'Annuler la période en cours' })}
               </Text>
             </Pressable>
-          </Animated.View>
-        )}
+          )}
+          <Pressable
+            onPress={handleResetAllPeriods}
+            disabled={periodLogs.length === 0}
+            style={({ pressed }) => [
+              styles.resetBtn,
+              styles.resetBtnDanger,
+              periodLogs.length === 0 && { opacity: 0.4 },
+              pressed && { opacity: 0.55 },
+            ]}
+          >
+            <Text style={styles.resetBtnDangerLabel}>
+              🗑 {t('periodsResetAllBtn', { defaultValue: 'Effacer toutes mes périodes' })}
+            </Text>
+          </Pressable>
+        </Animated.View>
       </ScrollView>
 
       <PeriodLogModal

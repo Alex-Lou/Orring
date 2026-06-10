@@ -6,7 +6,7 @@
  * imported here so the StyleSheet keeps resolving exactly as before.
  */
 import { StyleSheet } from 'react-native';
-import { spacing, fontSize, fontWeight, borderRadius, shadows } from '../src/theme';
+import { spacing, fontSize, fontWeight, borderRadius, shadows } from '../theme';
 
 export const styles = StyleSheet.create({
   safeArea: { flex: 1 },

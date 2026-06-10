@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../src/theme';
+import { colors, spacing, fontSize, fontWeight, borderRadius } from '../theme';
 
 export const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },

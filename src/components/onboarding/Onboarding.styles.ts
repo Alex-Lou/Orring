@@ -126,6 +126,7 @@ export const styles = StyleSheet.create({
 
   // Welcome
   welcomeWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  welcomeBird: { width: 150, height: 150, marginBottom: spacing.lg },
   welcomeEmoji: { fontSize: 80, marginBottom: spacing.lg },
   welcomeText: {
     fontSize: fontSize.xxl, fontWeight: fontWeight.black, textAlign: 'center', letterSpacing: -0.5,

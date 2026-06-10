@@ -52,7 +52,14 @@ export function ActionButton({ icon, label, color, bgColor, onPress }: ActionBut
       ) : (
         <View style={styles.iconSlot}>{icon}</View>
       )}
-      <Text style={[styles.label, { color }]}>{label}</Text>
+      <Text
+        style={[styles.label, { color }]}
+        numberOfLines={2}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
+        {label}
+      </Text>
     </AnimatedPressable>
   );
 }

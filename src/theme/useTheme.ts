@@ -2,12 +2,20 @@ import { useCycleStore } from '../store/cycleStore';
 
 // Lavande/Pervenche palette — match landing page
 const LIGHT = {
-  // Fond : pervenche très clair (pas blanc pétant)
-  background: '#F6F2FB',
-  backgroundGradientStart: '#F6F2FB',
-  backgroundGradientEnd: '#EAE2F5',
-  surface: '#FFFFFF',
-  surfaceElevated: '#F8F5FC',
+  // Fond principal : pervenche tenue (volontairement PAS blanc — Alex
+  // trouvait le fond encore trop éclatant en #F4F0FA, quasi blanc). On
+  // descend nettement vers le lavande pour adoucir la luminosité globale,
+  // tout en gardant les surfaces/cartes claires juste au-dessus (contraste
+  // doux carte↔fond, sans blanc pétant).
+  background: '#E7DDF0',
+  backgroundGradientStart: '#E7DDF0',
+  backgroundGradientEnd: '#DACEEB',
+  // Cards/surfaces: a lavender-tinted off-white, NOT bright white. Once the
+  // background went lavender the old near-white #FBF9FE cards became the
+  // glaring element; these sit gently above the bg (cards still pop via
+  // their shadow) without the harsh white slab.
+  surface: '#F2ECF9',
+  surfaceElevated: '#EAE2F4',
   text: '#2D2A3A',
   textSecondary: '#8B8696',
   textLight: '#B0AABE',
@@ -16,7 +24,7 @@ const LIGHT = {
   primary: '#A697D9',
   primaryDark: '#7F6EBA',
   primaryLight: '#D9D0EC',
-  cardBg: '#FFFFFF',
+  cardBg: '#F2ECF9',
 };
 
 const DARK = {

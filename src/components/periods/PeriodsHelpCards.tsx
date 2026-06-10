@@ -18,7 +18,7 @@ import { View, Text, Pressable } from 'react-native';
 import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
 import type { useTheme } from '../../theme/useTheme';
 import type { useTranslation } from 'react-i18next';
-import { styles } from '../../../app/periods.styles';
+import { styles } from '../../styles/periods.styles';
 import { TipStep } from './PeriodParts';
 
 type Theme = ReturnType<typeof useTheme>;
@@ -97,6 +97,20 @@ export function HowItWorksCard({ theme, isRTL, t }: { theme: Theme; isRTL: boole
               defaultValue: 'Trois gestes simples, le reste est automatique.',
             })}
           </Text>
+
+          {/* Reading the calendar itself — what the coloured days mean and
+              how to interact with them. This is the "section des règles
+              (le calendrier)" that the how-to was missing: the steps below
+              cover LOGGING, this one covers READING. */}
+          <TipStep
+            theme={theme}
+            emoji="📅"
+            title={t('periodsTipCalendarTitle', { defaultValue: 'Le calendrier' })}
+            body={t('periodsTipCalendarBody', {
+              defaultValue:
+                "Chaque jour coloré est une règle enregistrée ; la teinte indique l'intensité du flux. Tape n'importe quel jour pour l'ajouter ou le modifier.",
+            })}
+          />
 
           <TipStep
             theme={theme}

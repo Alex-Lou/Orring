@@ -22,7 +22,7 @@ import type { PeriodStats } from '../../utils/periods';
 import type { useTheme } from '../../theme/useTheme';
 import type { useTranslation } from 'react-i18next';
 import type { SummaryCard } from './buildSummaryCard';
-import { styles } from '../../../app/periods.styles';
+import { styles } from '../../styles/periods.styles';
 import { StatCard, LegendDot } from './PeriodParts';
 import { INTENSITY_BG } from './PeriodCalendar';
 

@@ -61,12 +61,12 @@ export default function CalendarScreen() {
       result.push({
         year: yearCursor,
         month: m,
-        days: getMonthDaysWithPeriods(yearCursor, m, insertDate, periodLogs),
+        days: getMonthDaysWithPeriods(yearCursor, m, insertDate, periodLogs, cycleLogs),
         isCurrentMonth: isSameMonth(monthDate, today),
       });
     }
     return result;
-  }, [yearCursor, firstInsertDate, periodLogs]);
+  }, [yearCursor, firstInsertDate, periodLogs, cycleLogs]);
 
   const todayYear = today.getFullYear();
   const isOnTodayYear = yearCursor === todayYear;
@@ -130,7 +130,7 @@ export default function CalendarScreen() {
               hitSlop={8}
               style={({ pressed }) => [styles.yearArrow, pressed && { opacity: 0.5 }]}
             >
-              <Ionicons name="chevron-back" size={20} color={theme.primaryDark} />
+              <Ionicons name={isRTL ? 'chevron-forward' : 'chevron-back'} size={20} color={theme.primaryDark} />
             </Pressable>
             <View style={styles.yearLabelBox}>
               <Text style={[styles.yearLabel, { color: theme.text }]}>{yearCursor}</Text>
@@ -155,7 +155,7 @@ export default function CalendarScreen() {
               hitSlop={8}
               style={({ pressed }) => [styles.yearArrow, pressed && { opacity: 0.5 }]}
             >
-              <Ionicons name="chevron-forward" size={20} color={theme.primaryDark} />
+              <Ionicons name={isRTL ? 'chevron-back' : 'chevron-forward'} size={20} color={theme.primaryDark} />
             </Pressable>
           </View>
         )}

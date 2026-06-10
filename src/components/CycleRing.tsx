@@ -22,6 +22,13 @@ interface CycleRingProps {
   isRingIn: boolean;
   phaseLabel: string;
   daysLeft: number;
+  /**
+   * When set (under 24h to the next action, or overdue), the center shows
+   * this exact string instead of the whole-day `daysLeft` count.
+   */
+  countdownOverride?: string | null;
+  /** Label paired with countdownOverride (e.g. "avant le retrait" / "de retard"). */
+  countdownLabel?: string | null;
   nextAction: string;
   /**
    * When true, renders a "scaffold" version of the ring: just the dim
@@ -43,6 +50,8 @@ export function CycleRing({
   isRingIn,
   phaseLabel,
   daysLeft,
+  countdownOverride = null,
+  countdownLabel = null,
   nextAction,
   inactive = false,
 }: CycleRingProps) {
@@ -72,7 +81,11 @@ export function CycleRing({
   const tickColor = darkMode ? theme.textLight : theme.textSecondary;
 
   const totalDays = isRingIn ? 21 : 7;
-  const dayInPhase = isRingIn ? currentDay : Math.max(0, currentDay - 21);
+  // `currentDay` is the day WITHIN the current phase (1..21 worn, 1..7 pause),
+  // already resolved by the screen. The old `currentDay - 21` assumed the
+  // removal always happened on day 21, so an EARLY removal (e.g. day 3) showed
+  // "J3 / Pause" and an empty dial instead of "J1" with the pause filling.
+  const dayInPhase = Math.max(0, Math.min(currentDay, totalDays));
   const progress = Math.min(dayInPhase / totalDays, 1);
   // Jour J = retrait/réinsertion prévus aujourd'hui. Tous les pulses du
   // today-dot sont alors amplifiés et on ajoute une couronne externe
@@ -386,6 +399,8 @@ export function CycleRing({
         currentDay={currentDay}
         phaseLabel={phaseLabel}
         daysLeft={daysLeft}
+        countdownOverride={countdownOverride}
+        countdownLabel={countdownLabel}
         nextAction={nextAction}
         inactive={inactive}
         progressColor={progressColor}

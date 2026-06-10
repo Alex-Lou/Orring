@@ -18,10 +18,17 @@ type Step = 'intro' | 'language' | 'date' | 'time' | 'name' | 'welcome';
 
 interface OnboardingProps {
   onComplete: () => void;
+  /**
+   * 'ringOnly' = re-anchor the ring after the home "Recommencer" — starts at
+   * the date step and skips language/name/welcome (already set). 'full' = a
+   * brand-new user (factory state / Settings reset).
+   */
+  mode?: 'full' | 'ringOnly';
 }
 
-export function Onboarding({ onComplete }: OnboardingProps) {
-  const [step, setStep] = useState<Step>('intro');
+export function Onboarding({ onComplete, mode = 'full' }: OnboardingProps) {
+  const ringOnly = mode === 'ringOnly';
+  const [step, setStep] = useState<Step>(ringOnly ? 'date' : 'intro');
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [pickerDate, setPickerDate] = useState(new Date());
   const [useToday, setUseToday] = useState(false);
@@ -67,7 +74,29 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     if (selectedDay !== null) setStep('time');
   };
 
+  // Build the chosen insertion datetime from the date + time steps.
+  const buildFinalDate = (): Date => {
+    let finalDate: Date;
+    if (useToday) {
+      finalDate = new Date();
+    } else if (selectedDay !== null) {
+      finalDate = new Date(pickerDate.getFullYear(), pickerDate.getMonth(), selectedDay);
+    } else {
+      finalDate = new Date();
+    }
+    finalDate.setHours(selHour, selMinute, 0, 0);
+    return finalDate;
+  };
+
   const handleTimeConfirm = () => {
+    if (ringOnly) {
+      // Ring-only re-entry (home "Recommencer"): the cycle is already
+      // onboarded, so just re-anchor the ring. Name / language / hasOnboarded
+      // stay untouched — no welcome screen.
+      insertRing(buildFinalDate().toISOString());
+      onComplete();
+      return;
+    }
     setStep('name');
   };
 
@@ -81,22 +110,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const handleWelcomeDone = () => {
     const finalName = skipName ? null : (name.trim() || null);
 
-    // Build final date
-    let finalDate: Date;
-    if (useToday) {
-      finalDate = new Date();
-    } else if (selectedDay !== null) {
-      finalDate = new Date(pickerDate.getFullYear(), pickerDate.getMonth(), selectedDay);
-    } else {
-      finalDate = new Date();
-    }
-    finalDate.setHours(selHour, selMinute, 0, 0);
-
     // IMPORTANT : completeOnboarding AVANT insertRing pour éviter un état intermédiaire
     // où firstInsertDate est défini mais hasOnboarded=false → MigrationFlow parasite.
     setUserName(finalName);
     completeOnboarding();
-    insertRing(finalDate.toISOString());
+    insertRing(buildFinalDate().toISOString());
     onComplete();
   };
 

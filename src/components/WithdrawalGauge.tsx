@@ -57,9 +57,13 @@ export function WithdrawalGauge({ dayInPause, totalPauseDays, daysUntilInsertion
   }));
 
   const isDDay = daysUntilInsertion === 0;
+  // Plain `{{d}}` interpolation (not i18next `count`) on purpose: the
+  // compact "J-{{d}}" notation never needs singular/plural agreement, and
+  // avoiding `count` means no _one/_other plural keys to maintain in 10
+  // locales — the base key resolves directly in every language.
   const label = isDDay
     ? t('insertToday', { defaultValue: "Jour d'insertion !" })
-    : t('daysUntilInsertion', { count: daysUntilInsertion, defaultValue: `J-${daysUntilInsertion} avant insertion` });
+    : t('daysUntilInsertion', { d: daysUntilInsertion, defaultValue: `J-${daysUntilInsertion} avant insertion` });
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.primaryLight }]}>
@@ -76,9 +80,12 @@ export function WithdrawalGauge({ dayInPause, totalPauseDays, daysUntilInsertion
           <Text style={styles.markerDot}>⭕</Text>
         </Animated.View>
       </View>
+      {/* Axis = the pause itself (removal → re-insertion), NOT cycle days.
+          The old hardcoded "J22 / J28" was wrong after an early removal
+          (the pause is day 1→7 from the actual removal, not days 22–28). */}
       <View style={styles.axis}>
-        <Text style={[styles.axisLabel, { color: theme.textLight }]}>J22 ✋</Text>
-        <Text style={[styles.axisLabel, { color: theme.textLight }]}>J28 ⭕</Text>
+        <Text style={[styles.axisLabel, { color: theme.textLight }]}>✋ {t('removal')}</Text>
+        <Text style={[styles.axisLabel, { color: theme.textLight }]}>{t('insertion')} ⭕</Text>
       </View>
     </View>
   );

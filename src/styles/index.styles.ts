@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '../src/theme';
+import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '../theme';
 
 export const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
@@ -7,13 +7,19 @@ export const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, paddingTop: spacing.md },
 
   header: { marginBottom: spacing.sm },
-  headerTop: {
+  // Dedicated row for the temporary-removal timer, sitting ABOVE the
+  // greeting so it never shares horizontal space with the greeting/date
+  // block (which would shrink the date phrase) nor overlap a long name.
+  // Rendered only while a temp removal is active. Side is set inline
+  // (right in LTR, left in RTL).
+  timerRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  greeting: { fontSize: fontSize.xxl, fontWeight: fontWeight.black, letterSpacing: -0.5, flexShrink: 1 },
+  // 26 (down from xxl=34): "Bonsoir, <nom>" stays comfortable on one line
+  // even for longer names. The text still auto-shrinks below this for very
+  // long ones, but the base is no longer oversized.
+  greeting: { fontSize: 26, fontWeight: fontWeight.black, letterSpacing: -0.5, flexShrink: 1 },
   // No flexWrap — when the greeting is too long (e.g. "مساء الخير, Alex 🌇")
   // we'd rather let flexShrink trim it than have a wrapped second line appear
   // at the far left and collide with the TempRemovalCountdown on the right.
@@ -57,6 +63,9 @@ export const styles = StyleSheet.create({
     // native z-order. zIndex alone isn't always enough on Android.
     zIndex: 20,
     elevation: 20,
+    // Slight tilt so the Z's read as gently drifting up beside the sleeping
+    // bird's head, instead of standing stiffly upright.
+    transform: [{ rotate: '13deg' }],
   },
   // Matches the visual weight of the adjacent emoji in the other time-of-day
   // variants. Rendered as a sibling of the greeting <Text>, not inline.

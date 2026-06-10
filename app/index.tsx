@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp, FadeIn, SlideInRight } from 'react-native-reanimated';
@@ -25,12 +25,13 @@ import { useIsRTL } from '../src/i18n/useIsRTL';
 // Greeting header (pet bird + greeting text + time-of-day icon + date phrase)
 // and its module-scope time-of-day helpers were extracted out of this file.
 import { GreetingHeader } from '../src/components/home/GreetingHeader';
-import { styles } from './index.styles';
+import { styles } from '../src/styles/index.styles';
 
 export default function MyCycleScreen() {
   const {
     firstInsertDate, ringStatus, cycleLogs,
-    insertRing, removeRing, resetAll, userName, darkMode, startTempRemoval,
+    insertRing, removeRing, clearHistory, hasOnboarded, userName, darkMode, startTempRemoval,
+    tempRemovalStart, cancelTempRemoval,
     // (the greeting-icon debug override was removed in v2.6.5)
   } = useCycleStore();
   const { width } = useWindowDimensions();
@@ -49,6 +50,44 @@ export default function MyCycleScreen() {
   );
 
   const isRingIn = ringStatus === 'in';
+
+  // During a TEMPORARY removal the ring is physically out (the cycle clock
+  // keeps ticking), so the gauge / pill / greeting must NOT read "Anneau en
+  // place" — that contradicts the "J'ai remis l'anneau" action.
+  const isTempRemoved = !!tempRemovalStart;
+
+  // Live clock so the under-24h countdown ticks down — and flips to "en
+  // retard" past the due time — on its OWN, without relaunching the app.
+  // 30s cadence keeps the minute display accurate. Hooks live ABOVE the
+  // onboarding early-return so the hook order is identical every render
+  // (Rules of Hooks — a hook after the return crashed the app the moment
+  // onboarding completed and `info` flipped from null to present).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Ring-center countdown override. Above 24h → the whole-day count (null).
+  // Under 24h → exact "Xh Ym". Past due → the overdue duration ("en retard"),
+  // ticking up. { value, labelKey } so the label matches each case.
+  const nextActionAt = info ? (isRingIn ? info.removalDateTime : info.nextInsertionDateTime) : null;
+  const countdown = useMemo(() => {
+    if (isTempRemoved || !nextActionAt) return null;
+    const ms = nextActionAt.getTime() - now;
+    const fmt = (totalMs: number) => {
+      const totalMin = Math.floor(totalMs / 60000);
+      const h = Math.floor(totalMin / 60);
+      const m = totalMin % 60;
+      return h > 0 ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`;
+    };
+    if (ms <= 0) {
+      const lateDays = Math.floor(-ms / 86400000);
+      return { value: lateDays >= 1 ? `${lateDays} j` : fmt(-ms), labelKey: 'overdueLabel' };
+    }
+    if (ms < 86400000) return { value: fmt(ms), labelKey: 'timeBeforeActionLabel' };
+    return null;
+  }, [isTempRemoved, nextActionAt, now]);
 
   // The "awaiting re-insertion" state — the 7-day pause is OVER but the
   // user hasn't yet logged a new insert. We render a scaffold (inactive)
@@ -77,11 +116,36 @@ export default function MyCycleScreen() {
 
   // Show onboarding if no insert date (covers new users + reset users)
   if (!firstInsertDate || !info) {
-    return <Onboarding onComplete={() => { /* state will re-render from store */ }} />;
+    // Already onboarded but no ring anchored (home "Recommencer" → ring-only
+    // re-entry): jump straight to date + time, keep name/language. A truly
+    // new / factory-reset user (hasOnboarded false) gets the full flow.
+    return (
+      <Onboarding
+        mode={hasOnboarded ? 'ringOnly' : 'full'}
+        onComplete={() => { /* state will re-render from store */ }}
+      />
+    );
   }
 
   const ringSize = Math.min(width - 60, 300);
   const nextActionLabel = info.nextAction === 'remove' ? t('removalAction') : t('insertionAction');
+
+  // The big ring number is PHASE-relative: while worn it's the cycle day
+  // (J1..J21), but during the pause it must count the pause itself (J1..J7
+  // "sans anneau") — so removing on day 3 reads "J1" (pause just started),
+  // not "J3". pauseDay = how many days into the 7-day pause we are.
+  const pauseDay = Math.min(RING_OUT_DAYS, Math.max(1, RING_OUT_DAYS - info.daysUntilChange + 1));
+  const ringDisplayDay = isRingIn ? info.currentDay : pauseDay;
+
+  // Ring/pill label (not a hook — safe after the early return). Temp removal
+  // wins over the in/out phase so it never contradicts the action button.
+  const ringPhaseLabel = isTempRemoved
+    ? t('tempRemovedRing')
+    : isRingIn ? t('ringInPlace') : t('pause');
+
+  // Countdown override → display strings (label differs soon vs overdue).
+  const countdownOverride = countdown?.value ?? null;
+  const countdownLabel = countdown ? t(countdown.labelKey, { action: nextActionLabel }) : null;
 
   const handleConfirmAction = (date: Date, options?: { temporary?: boolean; notify?: boolean }) => {
     if (confirmAction === 'insert') {
@@ -107,21 +171,30 @@ export default function MyCycleScreen() {
       destructive: true,
       emoji: '🔄',
     })) {
-      resetAll();
+      // Ring/cycle only — keeps périodes, language, name. firstInsertDate
+      // becomes null → the screen shows the ring-only re-entry (date + time).
+      // (Full factory reset lives in Settings → "Effacer mes données".)
+      clearHistory();
     }
   };
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Header */}
+        {/* Header.
+            The temporary-removal timer lives on its OWN row above the
+            greeting (right-aligned, left in RTL) so it can never (a) collide
+            with a long "Bonsoir, <name>" line, nor (b) steal horizontal
+            width from the greeting block and force the date phrase to
+            auto-shrink. The greeting + date phrases then always span the
+            full width. The row is rendered only while a timer is active. */}
         <Animated.View entering={FadeInDown.duration(700).springify()} style={styles.header}>
-          <View style={styles.headerTop}>
-            <View style={{ flex: 1 }}>
-              <GreetingHeader info={info} userName={userName} isRTL={isRTL} theme={theme} t={t} />
+          {tempRemovalStart && (
+            <View style={[styles.timerRow, { justifyContent: isRTL ? 'flex-start' : 'flex-end' }]}>
+              <TempRemovalCountdown />
             </View>
-            <TempRemovalCountdown />
-          </View>
+          )}
+          <GreetingHeader info={info} userName={userName} isRTL={isRTL} isTempRemoved={isTempRemoved} theme={theme} t={t} />
         </Animated.View>
 
         {/* Big cycle ring.
@@ -137,11 +210,13 @@ export default function MyCycleScreen() {
           style={styles.ringWrapper}
         >
           <CycleRing
-            currentDay={info.currentDay}
+            currentDay={ringDisplayDay}
             size={ringSize}
             isRingIn={isAwaitingReinsertion ? true : isRingIn}
-            phaseLabel={isRingIn ? t('ringInPlace') : t('pause')}
+            phaseLabel={ringPhaseLabel}
             daysLeft={info.daysUntilChange}
+            countdownOverride={countdownOverride}
+            countdownLabel={countdownLabel}
             nextAction={nextActionLabel}
             inactive={isAwaitingReinsertion}
           />
@@ -151,22 +226,33 @@ export default function MyCycleScreen() {
         <Animated.View entering={SlideInRight.delay(500).duration(500).springify()} style={[styles.pillsRow, isRTL && styles.rtlRow]}>
           <View style={[
             styles.pill,
-            isRingIn
+            (isRingIn && !isTempRemoved)
               ? { backgroundColor: darkMode ? 'rgba(158,198,164,0.18)' : colors.ringInLight }
               : { backgroundColor: darkMode ? 'rgba(181,165,226,0.18)' : colors.ringOutLight },
           ]}>
-            <Text style={[
-              styles.pillText,
-              { color: isRingIn
-                  ? (darkMode ? '#9EC6A4' : '#4A6A4E')
-                  : (darkMode ? '#C9BCEC' : '#8E5A77') },
-            ]}>
-              {isRingIn ? `⭕ ${t('ringInPlace')}` : `✋ ${t('ringRemoved')}`}
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+              style={[
+                styles.pillText,
+                { color: (isRingIn && !isTempRemoved)
+                    ? (darkMode ? '#9EC6A4' : '#4A6A4E')
+                    : (darkMode ? '#C9BCEC' : '#8E5A77') },
+              ]}>
+              {isTempRemoved
+                ? `⏸️ ${t('tempRemovedRing')}`
+                : isRingIn ? `⭕ ${t('ringInPlace')}` : `✋ ${t('ringRemoved')}`}
             </Text>
           </View>
           <View style={[styles.pill, { backgroundColor: darkMode ? 'rgba(181,165,226,0.22)' : theme.primaryLight }]}>
             <Text style={[styles.pillText, { color: theme.primaryDark }]}>
-              📅 {t('dayXOf28', { day: info.currentDay })}
+              {/* Phase-consistent with the ring: cycle day while worn,
+                  pause day (J1..J7 sans anneau) during the pause — so it
+                  never says "J1" in the ring but "3/28" here. */}
+              {isRingIn
+                ? `📅 ${t('dayXOf28', { day: info.currentDay })}`
+                : `✋ ${t('pause')} · J${pauseDay}/${RING_OUT_DAYS}`}
             </Text>
           </View>
         </Animated.View>
@@ -180,7 +266,7 @@ export default function MyCycleScreen() {
         {!isRingIn && !isAwaitingReinsertion && (
           <Animated.View entering={FadeInUp.delay(550).duration(500).springify()}>
             <WithdrawalGauge
-              dayInPause={Math.max(1, info.currentDay - RING_IN_DAYS)}
+              dayInPause={Math.min(RING_OUT_DAYS, Math.max(1, RING_OUT_DAYS - info.daysUntilChange + 1))}
               totalPauseDays={RING_OUT_DAYS}
               daysUntilInsertion={info.daysUntilChange}
             />
@@ -192,8 +278,39 @@ export default function MyCycleScreen() {
           <View style={styles.actionRow}>
             {/* v2.6.5: replaced PNG / emoji with Ionicons vector
                 glyphs — clean line-art that matches the drawer set
-                and adapts to dark/light via the `color` prop. */}
-            {isRingIn ? (
+                and adapts to dark/light via the `color` prop.
+                While a TEMPORARY removal is running the ring is
+                physically out (cycle clock keeps ticking), so the
+                only sensible action is "I put it back" — offering
+                "remove" again here was the breach. Putting it back
+                just stops the 3 h timer; it does NOT start a new
+                cycle (cancelTempRemoval, not insertRing). */}
+            {tempRemovalStart ? (
+              <ActionButton
+                icon={
+                  <Ionicons
+                    name="add-circle-outline"
+                    size={42}
+                    color={darkMode ? theme.primary : theme.primaryDark}
+                  />
+                }
+                label={t('reinsertedRing')}
+                color={darkMode ? theme.primary : theme.primaryDark}
+                bgColor={darkMode ? 'rgba(181,165,226,0.18)' : theme.primarySoft}
+                onPress={async () => {
+                  // Confirm before stopping the temp-removal timer, so a
+                  // stray tap doesn't silently end it with no feedback.
+                  if (await confirm({
+                    title: t('reinsertConfirmTitle'),
+                    body: t('reinsertConfirmBody'),
+                    confirmLabel: t('reinsertedRing'),
+                    emoji: '⭕',
+                  })) {
+                    cancelTempRemoval();
+                  }
+                }}
+              />
+            ) : isRingIn ? (
               <ActionButton
                 icon={
                   <Ionicons
@@ -275,6 +392,7 @@ export default function MyCycleScreen() {
         visible={!!confirmAction}
         action={confirmAction || 'insert'}
         isEarly={confirmAction === 'remove' && info.currentDay < 22}
+        insertionDate={info.insertionDateTime}
         onConfirm={handleConfirmAction}
         onClose={() => setConfirmAction(null)}
       />

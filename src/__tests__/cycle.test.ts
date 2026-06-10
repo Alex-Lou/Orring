@@ -1,5 +1,6 @@
 import {
   getDayInCycle,
+  getDayInCycleFromLogs,
   getDayStatus,
   getCurrentCycleStart,
   getCycleInfoFromLogs,
@@ -12,6 +13,11 @@ import {
   formatDateFr,
   getStatusLabel,
   getStatusEmoji,
+  upsertCycleLog,
+  earliestInsertDate,
+  sanitizeCycleLogs,
+  isInsertCorrection,
+  clampRemovalToInsertion,
 } from '../utils/cycle';
 import { addDays, startOfDay } from 'date-fns';
 import i18n from '../i18n';
@@ -173,10 +179,18 @@ describe('getCycleInfoFromLogs', () => {
     expect(info.isOverdue).toBe(true);
   });
 
-  test('detects overdue when ring should be in but is out', () => {
-    const info = getCycleInfoFromLogs(firstInsert, [], 'out', new Date(2026, 3, 5));
-    expect(info.currentDay).toBe(9);
-    expect(info.isOverdue).toBe(true);
+  test('ring removed → 7-day pause from the removal, next action is insert', () => {
+    // Inserted Mar 28, removed early on Apr 5. The ring-free pause is 7 days
+    // FROM the removal, so re-insertion is Apr 12 → exactly 7 days away.
+    const logs: CycleLog[] = [
+      { id: '1', date: new Date(2026, 2, 28).toISOString(), action: 'insert' },
+      { id: '2', date: new Date(2026, 3, 5).toISOString(), action: 'remove' },
+    ];
+    const info = getCycleInfoFromLogs(firstInsert, logs, 'out', new Date(2026, 3, 5));
+    // A ring that's OUT can only be re-inserted next — never "removed" again.
+    expect(info.nextAction).toBe('insert');
+    expect(info.daysUntilChange).toBe(7);
+    expect(info.isOverdue).toBe(false);
   });
 });
 
@@ -281,4 +295,271 @@ describe('getStatusEmoji', () => {
     expect(getStatusEmoji('ring_out').length).toBeGreaterThan(0);
   });
   test('none has no emoji', () => expect(getStatusEmoji('none')).toBe(''));
+});
+
+// ─── upsertCycleLog : append vs correct-in-place ───
+
+describe('upsertCycleLog', () => {
+  const base: CycleLog[] = [{ id: 'a', date: '2026-03-28T08:00:00.000Z', action: 'insert' }];
+
+  test('a genuine state change appends a new log', () => {
+    const out = upsertCycleLog(base, 'remove', '2026-04-18T08:00:00.000Z', false, 'new1');
+    expect(out).toHaveLength(2);
+    expect(out[1]).toMatchObject({ id: 'new1', action: 'remove', date: '2026-04-18T08:00:00.000Z' });
+  });
+
+  test('a correction edits the last matching log in place (no duplicate)', () => {
+    const out = upsertCycleLog(base, 'insert', '2026-03-26T08:00:00.000Z', true, 'unused');
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('a');                       // same log…
+    expect(out[0].date).toBe('2026-03-26T08:00:00.000Z'); // …only the date moved
+  });
+
+  test('correction with no prior matching log still appends', () => {
+    const out = upsertCycleLog([], 'insert', '2026-03-26T08:00:00.000Z', true, 'new2');
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('new2');
+  });
+
+  test('correction only touches the LAST insert, earlier cycles untouched', () => {
+    const logs: CycleLog[] = [
+      { id: '1', date: '2026-01-01T08:00:00.000Z', action: 'insert' },
+      { id: '2', date: '2026-01-29T08:00:00.000Z', action: 'insert' },
+    ];
+    const out = upsertCycleLog(logs, 'insert', '2026-01-30T08:00:00.000Z', true, 'x');
+    expect(out[0].date).toBe('2026-01-01T08:00:00.000Z');
+    expect(out[1].date).toBe('2026-01-30T08:00:00.000Z');
+  });
+});
+
+describe('isInsertCorrection', () => {
+  const removeJun10: CycleLog = { id: 'r', date: new Date(2026, 5, 10).toISOString(), action: 'remove' };
+
+  test('ring in → always a correction (edit the worn cycle in place)', () => {
+    expect(isInsertCorrection([removeJun10], 'in', new Date(2026, 5, 1).toISOString())).toBe(true);
+  });
+  test('ring out with no removals → correction', () => {
+    expect(isInsertCorrection([], 'out', new Date(2026, 5, 1).toISOString())).toBe(true);
+  });
+  test('ring out, date strictly AFTER last removal → new cycle (append)', () => {
+    expect(isInsertCorrection([removeJun10], 'out', new Date(2026, 5, 17).toISOString())).toBe(false);
+  });
+  test('ring out, BACKDATED before the removal → correction (the 21 May case)', () => {
+    expect(isInsertCorrection([removeJun10], 'out', new Date(2026, 4, 21).toISOString())).toBe(true);
+  });
+  test('ring out, same day as the removal → correction', () => {
+    expect(isInsertCorrection([removeJun10], 'out', new Date(2026, 5, 10).toISOString())).toBe(true);
+  });
+});
+
+describe('backdated insertion sticks as the anchor (Settings/Home desync)', () => {
+  test('removed today, then "inserted 21 May" → anchor is 21 May, single insert log', () => {
+    const today = new Date(2026, 5, 10); // Jun 10
+    // onboard insert Jun 10, then remove Jun 10 → ring out
+    let logs = upsertCycleLog([], 'insert', new Date(2026, 5, 10).toISOString(), false, 'i1');
+    logs = upsertCycleLog(logs, 'remove', new Date(2026, 5, 10).toISOString(), false, 'r1');
+    // user sets insertion to 21 May while out → it's a correction, not a new cycle
+    const corr = isInsertCorrection(logs, 'out', new Date(2026, 4, 21).toISOString());
+    expect(corr).toBe(true);
+    logs = upsertCycleLog(logs, 'insert', new Date(2026, 4, 21).toISOString(), corr, 'i2');
+    expect(logs.filter(l => l.action === 'insert')).toHaveLength(1); // no stale duplicate
+    const anchor = getEffectiveCycleStart(new Date(2026, 4, 21), logs, today);
+    expect(anchor.getMonth()).toBe(4); // May, not June
+    expect(anchor.getDate()).toBe(21);
+  });
+});
+
+describe('sanitizeCycleLogs (legacy self-heal)', () => {
+  test('empty / single log is returned unchanged', () => {
+    expect(sanitizeCycleLogs([])).toEqual([]);
+    const one: CycleLog[] = [{ id: 'a', date: '2026-03-28T08:00:00.000Z', action: 'insert' }];
+    expect(sanitizeCycleLogs(one)).toEqual(one);
+  });
+
+  test('two stacked inserts collapse to the later one', () => {
+    const logs: CycleLog[] = [
+      { id: '1', date: '2026-06-03T08:00:00.000Z', action: 'insert' },
+      { id: '2', date: '2026-06-10T08:00:00.000Z', action: 'insert' },
+    ];
+    const out = sanitizeCycleLogs(logs);
+    expect(out).toHaveLength(1);
+    expect(out[0].date).toBe('2026-06-10T08:00:00.000Z');
+  });
+
+  test('alternating insert/remove is preserved', () => {
+    const logs: CycleLog[] = [
+      { id: '1', date: '2026-01-01T08:00:00.000Z', action: 'insert' },
+      { id: '2', date: '2026-01-22T08:00:00.000Z', action: 'remove' },
+      { id: '3', date: '2026-01-29T08:00:00.000Z', action: 'insert' },
+    ];
+    expect(sanitizeCycleLogs(logs)).toHaveLength(3);
+  });
+
+  test('sorts by date, then collapses runs (the corrupt-calendar case)', () => {
+    // Logged out of order with a duplicate insert run — exactly what backdated
+    // testing produced: insert/insert with no removal between → one cycle.
+    const logs: CycleLog[] = [
+      { id: '2', date: '2026-06-10T08:00:00.000Z', action: 'insert' },
+      { id: '1', date: '2026-06-03T08:00:00.000Z', action: 'insert' },
+      { id: '3', date: '2026-06-17T08:00:00.000Z', action: 'remove' },
+    ];
+    const out = sanitizeCycleLogs(logs);
+    expect(out.map(l => l.action)).toEqual(['insert', 'remove']);
+    expect(out[0].date).toBe('2026-06-10T08:00:00.000Z'); // later of the two inserts
+  });
+});
+
+describe('earliestInsertDate', () => {
+  test('returns the earliest insertion, ignoring removals & order', () => {
+    const logs: CycleLog[] = [
+      { id: '2', date: '2026-01-29T08:00:00.000Z', action: 'insert' },
+      { id: 'r', date: '2026-01-22T08:00:00.000Z', action: 'remove' },
+      { id: '1', date: '2026-01-01T08:00:00.000Z', action: 'insert' },
+    ];
+    expect(earliestInsertDate(logs, 'fallback')).toBe('2026-01-01T08:00:00.000Z');
+  });
+  test('no inserts → fallback', () => {
+    expect(earliestInsertDate([], 'fallback')).toBe('fallback');
+  });
+});
+
+// ─── #6 regression: a backdated correction reflects immediately ───
+
+describe('correcting the current insertion (#6 breach)', () => {
+  test('onboard "today" then correct to 2 days ago → currentDay 3, single log', () => {
+    const today = new Date(2026, 5, 12); // Jun 12
+    // 1) onboarding insert "today" (ring was 'out' → genuine append)
+    let logs = upsertCycleLog([], 'insert', new Date(2026, 5, 12, 9).toISOString(), false, 'a');
+    // 2) "actually I inserted it 2 days ago" while ring is already 'in' → correction
+    logs = upsertCycleLog(logs, 'insert', new Date(2026, 5, 10, 9).toISOString(), true, 'b');
+    expect(logs).toHaveLength(1); // no phantom duplicate cycle
+
+    const info = getCycleInfoFromLogs(new Date(logs[0].date), logs, 'in', today);
+    expect(info.currentDay).toBe(3);          // Jun 10 → Jun 12 = day 3, not day 1
+    expect(info.nextAction).toBe('remove');
+  });
+});
+
+// ─── getDayInCycleFromLogs : log-aware calendar coloring (C1 regression) ───
+
+describe('getDayInCycleFromLogs', () => {
+  const firstInsert = new Date(2026, 0, 1); // Jan 1
+
+  test('no logs → identical to the fixed 28-day schedule', () => {
+    expect(getDayInCycleFromLogs(firstInsert, [], new Date(2026, 0, 1))).toBe(1);
+    expect(getDayInCycleFromLogs(firstInsert, [], new Date(2026, 0, 21))).toBe(21);
+    expect(getDayInCycleFromLogs(firstInsert, [], new Date(2026, 0, 29))).toBe(1); // next cycle
+  });
+
+  test('days before the first insertion return -1', () => {
+    expect(getDayInCycleFromLogs(firstInsert, [], new Date(2025, 11, 31))).toBe(-1);
+  });
+
+  test('an off-schedule re-insertion governs the days after it (no permanent drift)', () => {
+    const logs: CycleLog[] = [
+      { id: '1', date: new Date(2026, 0, 1).toISOString(), action: 'insert' },
+      { id: '2', date: new Date(2026, 0, 25).toISOString(), action: 'insert' }, // off-schedule re-insert
+    ];
+    // Anchored on the Jan-25 re-insertion, not the fixed Jan-1 + 24 schedule:
+    expect(getDayInCycleFromLogs(firstInsert, logs, new Date(2026, 0, 25))).toBe(1);
+    expect(getDayInCycleFromLogs(firstInsert, logs, new Date(2026, 0, 26))).toBe(2);
+    // …and this matches what the home screen shows for that same anchor.
+  });
+
+  test('days before a re-insertion keep using the earlier governing insert', () => {
+    const logs: CycleLog[] = [
+      { id: '1', date: new Date(2026, 0, 1).toISOString(), action: 'insert' },
+      { id: '2', date: new Date(2026, 0, 25).toISOString(), action: 'insert' },
+    ];
+    expect(getDayInCycleFromLogs(firstInsert, logs, new Date(2026, 0, 10))).toBe(10);
+  });
+});
+
+// ─── #7 safety: a removal before the current insertion can't drive the pause ───
+
+describe('pause ignores removals dated before the current insertion', () => {
+  test('stray earlier removal does not become the shown removal date', () => {
+    const firstInsert = new Date(2026, 2, 28); // Mar 28
+    const logs: CycleLog[] = [
+      { id: 'i', date: new Date(2026, 2, 28).toISOString(), action: 'insert' },
+      { id: 'r', date: new Date(2026, 2, 20).toISOString(), action: 'remove' }, // before insert
+    ];
+    const info = getCycleInfoFromLogs(firstInsert, logs, 'out', new Date(2026, 2, 28));
+    // Falls back to the SCHEDULED removal (insertion + 21 = Apr 18), never the
+    // contradictory Mar-20 stray.
+    expect(info.removalDateTime).not.toBeNull();
+    expect(info.removalDateTime!.getMonth()).toBe(3); // April, not March
+    expect(info.removalDateTime!.getDate()).toBe(18);
+  });
+});
+
+// ─── 7.2: a ring can't come out before it went in (clamp) ───
+
+describe('clampRemovalToInsertion', () => {
+  test('no insert logs → removal returned unchanged', () => {
+    const d = new Date(2026, 5, 10).toISOString();
+    expect(clampRemovalToInsertion([], d)).toBe(d);
+  });
+
+  test('removal after insertion → unchanged', () => {
+    const logs: CycleLog[] = [{ id: 'i', date: new Date(2026, 5, 2, 9).toISOString(), action: 'insert' }];
+    const remove = new Date(2026, 5, 10, 9).toISOString();
+    expect(clampRemovalToInsertion(logs, remove)).toBe(remove);
+  });
+
+  test('removal backdated BEFORE insertion → clamped up to the insertion datetime', () => {
+    const insert = new Date(2026, 5, 12, 9).toISOString();
+    const logs: CycleLog[] = [{ id: 'i', date: insert, action: 'insert' }];
+    const remove = new Date(2026, 5, 10, 9).toISOString(); // 2 days before insert
+    expect(clampRemovalToInsertion(logs, remove)).toBe(insert);
+  });
+
+  test('removal exactly at insertion → unchanged (pause J1)', () => {
+    const insert = new Date(2026, 5, 12, 9).toISOString();
+    const logs: CycleLog[] = [{ id: 'i', date: insert, action: 'insert' }];
+    expect(clampRemovalToInsertion(logs, insert)).toBe(insert);
+  });
+
+  test('anchors on the MOST RECENT insertion across cycles', () => {
+    const logs: CycleLog[] = [
+      { id: 'i1', date: new Date(2026, 4, 1, 9).toISOString(), action: 'insert' },
+      { id: 'r1', date: new Date(2026, 4, 22, 9).toISOString(), action: 'remove' },
+      { id: 'i2', date: new Date(2026, 4, 29, 9).toISOString(), action: 'insert' },
+    ];
+    const remove = new Date(2026, 4, 25, 9).toISOString(); // before the 2nd insert
+    expect(clampRemovalToInsertion(logs, remove)).toBe(new Date(2026, 4, 29, 9).toISOString());
+  });
+});
+
+// ─── 7.2: a backdated removal stays reactive when it's physically valid ───
+
+describe('backdated removal reactivity (the J3 case)', () => {
+  test('inserted 10 days ago, removal corrected to 2 days ago → pause J3, 5 days to re-insertion', () => {
+    const today = new Date(2026, 5, 12); // Jun 12
+    // insert Jun 2 (append), remove today (append), then correct removal back
+    // to Jun 10 — still ≥ insertion, so the clamp leaves it untouched.
+    let logs = upsertCycleLog([], 'insert', new Date(2026, 5, 2, 9).toISOString(), false, 'i');
+    logs = upsertCycleLog(logs, 'remove', new Date(2026, 5, 12, 9).toISOString(), false, 'r');
+    const corrected = clampRemovalToInsertion(logs, new Date(2026, 5, 10, 9).toISOString());
+    expect(corrected).toBe(new Date(2026, 5, 10, 9).toISOString()); // not clamped
+    logs = upsertCycleLog(logs, 'remove', corrected, true, 'unused');
+
+    const info = getCycleInfoFromLogs(new Date(logs[0].date), logs, 'out', today);
+    expect(info.nextAction).toBe('insert');
+    expect(info.daysUntilChange).toBe(5);                       // Jun 10 + 7 = Jun 17
+    expect(RING_OUT_DAYS - info.daysUntilChange + 1).toBe(3);   // home-screen pauseDay = J3
+  });
+
+  test('impossible case (inserted today, removal "2 days ago") clamps → pause J1', () => {
+    const today = new Date(2026, 5, 12); // Jun 12
+    let logs = upsertCycleLog([], 'insert', new Date(2026, 5, 12, 9).toISOString(), false, 'i');
+    logs = upsertCycleLog(logs, 'remove', new Date(2026, 5, 12, 9).toISOString(), false, 'r');
+    const corrected = clampRemovalToInsertion(logs, new Date(2026, 5, 10, 9).toISOString());
+    expect(corrected).toBe(new Date(2026, 5, 12, 9).toISOString()); // clamped to insertion
+    logs = upsertCycleLog(logs, 'remove', corrected, true, 'unused');
+
+    const info = getCycleInfoFromLogs(new Date(logs[0].date), logs, 'out', today);
+    expect(info.daysUntilChange).toBe(7);                      // removed today → full pause ahead
+    expect(RING_OUT_DAYS - info.daysUntilChange + 1).toBe(1);  // pause J1
+  });
 });

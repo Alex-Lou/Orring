@@ -58,6 +58,36 @@ export function getDayInCycle(insertDate: Date, targetDate: Date): number {
   return (diff % CYCLE_LENGTH) + 1;
 }
 
+/**
+ * Log-aware day-in-cycle for the CALENDAR grid.
+ *
+ * `getDayInCycle` projects a single fixed `firstInsert + 28×N` schedule, so
+ * the moment the user inserts/removes off-schedule the calendar drifts from
+ * the (log-aware) home screen — and the offset is permanent, recurring every
+ * month forever. This version anchors each day on the insertion that
+ * actually governs it: the most recent insert log on or before that day
+ * (falling back to `firstInsertDate` before the first log). Past cycles line
+ * up with their real insert logs; future months project from the LATEST
+ * insert — exactly the anchor the home screen uses for "today".
+ */
+export function getDayInCycleFromLogs(
+  firstInsertDate: Date,
+  cycleLogs: CycleLog[],
+  targetDate: Date,
+): number {
+  const target = startOfDay(targetDate);
+  const governingInsert = cycleLogs
+    .filter(l => l.action === 'insert')
+    .map(l => startOfDay(new Date(l.date)))
+    .filter(d => !isAfter(d, target))
+    .sort((a, b) => b.getTime() - a.getTime())[0]
+    ?? startOfDay(firstInsertDate);
+
+  const diff = differenceInDays(target, governingInsert);
+  if (diff < 0) return -1;
+  return (diff % CYCLE_LENGTH) + 1;
+}
+
 export function getDayStatus(dayInCycle: number): DayStatus {
   if (dayInCycle < 1 || dayInCycle > CYCLE_LENGTH) return 'none';
   if (dayInCycle === 1) return 'insert_day';
@@ -134,51 +164,49 @@ export function getCycleInfoFromLogs(
   //     a day — we compare day-starts, never raw timestamps.
   const todayStart = startOfDay(today);
 
-  if (currentDay <= RING_IN_DAYS) {
+  // The ring-free pause lasts RING_OUT_DAYS (7) FROM the actual removal — NOT
+  // a fixed insertion+28 schedule. So removing the ring (even early) always
+  // gives the correct 7-day countdown to re-insertion, never 28.
+  //
+  // Only a removal of the CURRENT cycle (on or after cycleStart) may drive the
+  // pause. A removal logged for a *previous* cycle — or, while testing, one
+  // dated before the current insertion — must never anchor today's countdown,
+  // otherwise the screen would contradict itself (e.g. "inserted the 10th" yet
+  // a pause computed from a removal on the 8th).
+  const lastRemoveLog = [...cycleLogs]
+    .filter(l => l.action === 'remove')
+    .filter(l => !isBefore(startOfDay(new Date(l.date)), startOfDay(cycleStart)))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  const lastRemovalDay = lastRemoveLog
+    ? startOfDay(new Date(lastRemoveLog.date))
+    : addDays(cycleStart, RING_IN_DAYS); // fallback: the scheduled removal day
+  const pauseEndDate = addDays(lastRemovalDay, RING_OUT_DAYS); // re-insertion day
+  const daysIntoPause = Math.max(0, differenceInDays(todayStart, lastRemovalDay));
+
+  // The next action follows the RING STATE, never the calendar alone:
+  //   • ring IN  → you remove it (after 21 days of wear)
+  //   • ring OUT → you re-insert it (after the 7-day ring-free pause)
+  // so the status pill and the countdown/action label can never contradict.
+  if (ringStatus === 'in') {
     nextAction = 'remove';
     nextActionDate = addDays(cycleStart, RING_IN_DAYS);
     daysUntilChange = Math.max(0, differenceInDays(nextActionDate, todayStart));
-    progress = currentDay / RING_IN_DAYS;
+    progress = Math.min(currentDay / RING_IN_DAYS, 1);
     phaseLabel = currentDay === 1 ? t('insertionDay') : t('ringInPlace');
-
-    if (ringStatus === 'out' && currentDay > 1) {
-      isOverdue = true;
-      phaseLabel = t('phaseRemovedEarly');
+    if (differenceInDays(todayStart, nextActionDate) > 0) {
+      isOverdue = true;            // past the removal day but still wearing it
+      phaseLabel = t('phaseStillIn');
     }
   } else {
-    const dayInPause = currentDay - RING_IN_DAYS;
     nextAction = 'insert';
-    nextActionDate = addDays(cycleStart, CYCLE_LENGTH);
+    nextActionDate = pauseEndDate;
     daysUntilChange = Math.max(0, differenceInDays(nextActionDate, todayStart));
-    progress = dayInPause / RING_OUT_DAYS;
-    phaseLabel = currentDay === RING_IN_DAYS + 1 ? t('removalDay') : t('ringRemoved');
-
-    if (ringStatus === 'in') {
-      // Overdue removal: a pause-week calendar day but the ring is still
-      // in. The next action is REMOVE (overdue), not insert — keep
-      // nextAction / nextActionDate / countdown consistent with the
-      // ActionButton and the "should have come out" phase copy.
-      isOverdue = true;
-      phaseLabel = t('phaseStillIn');
-      nextAction = 'remove';
-      nextActionDate = addDays(cycleStart, RING_IN_DAYS);
-      daysUntilChange = Math.max(0, differenceInDays(nextActionDate, todayStart));
-    }
-  }
-
-  // Handle days beyond cycle (overdue situation)
-  if (daysSinceInsert > CYCLE_LENGTH) {
-    isOverdue = true;
-    daysUntilChange = 0;
-    progress = 1;
-    if (ringStatus === 'out') {
-      nextAction = 'insert';
+    progress = Math.min(daysIntoPause / RING_OUT_DAYS, 1);
+    phaseLabel = t('ringRemoved');
+    if (differenceInDays(todayStart, nextActionDate) > 0) {
+      isOverdue = true;            // past the re-insertion day but still out
       phaseLabel = t('phaseOverdueInsert');
-    } else {
-      nextAction = 'remove';
-      phaseLabel = t('phaseOverdueRemove');
     }
-    nextActionDate = today;
   }
 
   const cycleProgress = Math.min(currentDay / CYCLE_LENGTH, 1);
@@ -189,15 +217,23 @@ export function getCycleInfoFromLogs(
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
 
   const insertionDateTime = lastInsertLog ? new Date(lastInsertLog.date) : null;
+  const removalActualDateTime = lastRemoveLog ? new Date(lastRemoveLog.date) : null;
 
-  // Calculate exact removal and next insertion datetimes (same hour as insertion)
-  const removalDateTime = insertionDateTime
-    ? addDays(insertionDateTime, RING_IN_DAYS)
-    : null;
+  // "Removal" date shown on screen: the ACTUAL removal once the ring is out,
+  // otherwise the scheduled removal (insertion + 21 days, same clock time).
+  const removalDateTime = ringStatus === 'out' && removalActualDateTime
+    ? removalActualDateTime
+    : insertionDateTime
+      ? addDays(insertionDateTime, RING_IN_DAYS)
+      : null;
 
-  const nextInsertionDateTime = insertionDateTime
-    ? addDays(insertionDateTime, CYCLE_LENGTH)
-    : null;
+  // Next re-insertion: 7 days after the ACTUAL removal while out; otherwise a
+  // projection of the next cycle (insertion + 28) while the ring is still in.
+  const nextInsertionDateTime = ringStatus === 'out' && removalActualDateTime
+    ? addDays(removalActualDateTime, RING_OUT_DAYS)
+    : insertionDateTime
+      ? addDays(insertionDateTime, CYCLE_LENGTH)
+      : null;
 
   return {
     currentDay,
@@ -214,6 +250,131 @@ export function getCycleInfoFromLogs(
     nextInsertionDateTime,
     isOverdue,
   };
+}
+
+// ─── Cycle-log mutation helpers (pure — unit-tested) ───
+
+/**
+ * Append a cycle log, OR correct the current one in place.
+ *
+ * A genuine state change (ring in→out or out→in) APPENDS a new event.
+ * Re-logging the state you're already in is a CORRECTION of the current
+ * insertion/removal date, so we edit the last matching log in place rather
+ * than stack a duplicate. Stacking was the root of the "I said inserted 2
+ * days ago but it still counts today" breach: a 2nd insert let the picker
+ * keep the older, later-dated one and ignore the correction — and spawned a
+ * phantom extra cycle in the history.
+ *
+ * Pure: the id for a freshly-appended log is passed in (`newId`) so callers
+ * own id generation and this stays deterministic for tests.
+ */
+export function upsertCycleLog(
+  logs: CycleLog[],
+  action: 'insert' | 'remove',
+  date: string,
+  isCorrection: boolean,
+  newId: string,
+): CycleLog[] {
+  if (isCorrection) {
+    for (let i = logs.length - 1; i >= 0; i--) {
+      if (logs[i].action === action) {
+        const next = logs.slice();
+        next[i] = { ...next[i], date };
+        return next;
+      }
+    }
+  }
+  return [...logs, { id: newId, date, action }];
+}
+
+/**
+ * The "reference date" (settings + history fallback) is the EARLIEST
+ * insertion on record — stable across cycles, yet it follows a correction
+ * of the very first insertion. Falls back to `fallback` when there are no
+ * insert logs at all.
+ */
+export function earliestInsertDate(logs: CycleLog[], fallback: string): string {
+  const inserts = logs.filter(l => l.action === 'insert').map(l => l.date);
+  return inserts.length
+    ? inserts.reduce((a, b) => (new Date(a) <= new Date(b) ? a : b))
+    : fallback;
+}
+
+/**
+ * Self-heal a cycle-log timeline: sort by date and collapse any RUN of the
+ * same action into its most recent entry. Two inserts with no removal
+ * between them (or two removals with no insert between) can only be
+ * duplicate re-logs of the same event — keeping the latest is exactly the
+ * "correction in place" rule, applied retroactively.
+ *
+ * This repairs legacy data written before insert/remove corrected in place,
+ * where backdated re-logs stacked up and made the calendar paint
+ * overlapping cycles (one long green span instead of 21 + 7). Pure — used
+ * by the store's persist `migrate`.
+ */
+/**
+ * Decide whether an incoming insert is a CORRECTION of the current cycle's
+ * insertion (→ edit the existing insert log in place) or a genuine NEW-cycle
+ * re-insertion (→ append a fresh log).
+ *
+ *  • Ring currently IN  → you're editing the worn cycle's insertion date.
+ *  • Ring currently OUT → only a date STRICTLY AFTER the last removal starts
+ *    the next cycle; any earlier-or-equal date (a backdated fix, e.g. "I
+ *    actually inserted it on 21 May") edits the cycle you just removed.
+ *
+ * This is what makes a backdated insertion STICK as the cycle anchor instead
+ * of an older same-cycle log winning by virtue of a later calendar date —
+ * the exact "Settings says 21 May but Home says J1 today" desync.
+ */
+export function isInsertCorrection(
+  cycleLogs: CycleLog[],
+  ringStatus: RingStatus,
+  insertDate: string,
+): boolean {
+  if (ringStatus === 'in') return true;
+  const lastRemove = [...cycleLogs]
+    .filter(l => l.action === 'remove')
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  if (!lastRemove) return true;
+  return !isAfter(startOfDay(new Date(insertDate)), startOfDay(new Date(lastRemove.date)));
+}
+
+/**
+ * A ring can't come out before it went in. Clamp a backdated removal so it
+ * never predates the current cycle's insertion — otherwise the 7-day pause
+ * would be shown as starting before the ring was ever in, which both
+ * contradicts the home screen and, far worse for a contraceptive, misstates
+ * how many days of pause have elapsed. The removal picker enforces the same
+ * floor in the UI; this guards the quick "N days ago" buttons (and any other
+ * caller) that bypass it.
+ *
+ * Returns `removeDate` untouched when it's already on/after the most recent
+ * insertion, or when there is no insertion to anchor to. Pure — unit-tested.
+ */
+export function clampRemovalToInsertion(cycleLogs: CycleLog[], removeDate: string): string {
+  const inserts = cycleLogs.filter(l => l.action === 'insert');
+  if (inserts.length === 0) return removeDate;
+  const lastInsert = inserts.reduce((a, b) =>
+    new Date(a.date).getTime() >= new Date(b.date).getTime() ? a : b,
+  );
+  return new Date(removeDate).getTime() < new Date(lastInsert.date).getTime()
+    ? lastInsert.date
+    : removeDate;
+}
+
+export function sanitizeCycleLogs(logs: CycleLog[]): CycleLog[] {
+  if (!Array.isArray(logs) || logs.length < 2) return Array.isArray(logs) ? logs : [];
+  const sorted = [...logs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const out: CycleLog[] = [];
+  for (const log of sorted) {
+    const last = out[out.length - 1];
+    if (last && last.action === log.action) {
+      out[out.length - 1] = log; // collapse the run → keep the later event
+    } else {
+      out.push(log);
+    }
+  }
+  return out;
 }
 
 // ─── History generation ───
@@ -294,7 +455,8 @@ export function getMonthDaysWithPeriods(
   year: number,
   month: number,
   firstInsertDate: Date | null,
-  periodLogs: PeriodLog[]
+  periodLogs: PeriodLog[],
+  cycleLogs: CycleLog[] = []
 ): CycleDay[] {
   const today = startOfDay(new Date());
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -303,7 +465,13 @@ export function getMonthDaysWithPeriods(
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d);
     const dateStart = startOfDay(date);
-    const dayInCycle = firstInsertDate ? getDayInCycle(firstInsertDate, date) : -1;
+    // Log-aware: each day is anchored on the insertion that actually governs
+    // it, so the grid matches the home screen after off-schedule changes
+    // instead of drifting on the fixed firstInsert+28×N schedule. With no
+    // cycleLogs this naturally falls back to the firstInsertDate anchor.
+    const dayInCycle = firstInsertDate
+      ? getDayInCycleFromLogs(firstInsertDate, cycleLogs, date)
+      : -1;
 
     // Check for period log on this day
     const periodLog = periodLogs.find(p => isSameDay(startOfDay(new Date(p.startDate)), dateStart));

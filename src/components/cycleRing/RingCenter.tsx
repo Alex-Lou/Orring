@@ -11,6 +11,10 @@ interface RingCenterProps {
   currentDay: number;
   phaseLabel: string;
   daysLeft: number;
+  /** Under 24h / overdue: exact string shown instead of the whole-day count. */
+  countdownOverride?: string | null;
+  /** Label paired with countdownOverride ("avant le retrait" / "de retard"). */
+  countdownLabel?: string | null;
   nextAction: string;
   inactive: boolean;
   progressColor: string;
@@ -31,6 +35,8 @@ export function RingCenter({
   currentDay,
   phaseLabel,
   daysLeft,
+  countdownOverride = null,
+  countdownLabel = null,
   nextAction,
   inactive,
   progressColor,
@@ -86,12 +92,36 @@ export function RingCenter({
       ) : (
         <>
           <Text style={[styles.dayNumber, { color: theme.text }]}>J{currentDay}</Text>
-          <Text style={[styles.phaseText, { color: theme.textSecondary }]}>{phaseLabel}</Text>
-          <View style={[styles.divider, { backgroundColor: progressColor }]} />
-          <Text style={[styles.countdownNumber, { color: theme.primaryDark }]}>{daysLeft}</Text>
-          <Text style={[styles.countdownLabel, { color: theme.textSecondary }]}>
-            {t('daysBeforeActionLabel', { action: nextAction })}
+          <Text
+            style={[styles.phaseText, { color: theme.textSecondary, maxWidth: size * 0.64 }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+          >
+            {phaseLabel}
           </Text>
+          <View style={[styles.divider, { backgroundColor: progressColor }]} />
+          {countdownOverride ? (
+            <>
+              <Text
+                style={[styles.countdownNumber, { color: theme.primaryDark, fontSize: 30 }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {countdownOverride}
+              </Text>
+              <Text style={[styles.countdownLabel, { color: theme.textSecondary }]}>
+                {countdownLabel ?? t('timeBeforeActionLabel', { action: nextAction })}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.countdownNumber, { color: theme.primaryDark }]}>{daysLeft}</Text>
+              <Text style={[styles.countdownLabel, { color: theme.textSecondary }]}>
+                {t('daysBeforeActionLabel', { action: nextAction })}
+              </Text>
+            </>
+          )}
         </>
       )}
     </View>

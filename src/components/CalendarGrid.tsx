@@ -6,8 +6,10 @@ import { getDateFnsLocale } from '../i18n/dateLocales';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '../theme';
 import { getMonthDaysWithPeriods, CycleDay } from '../utils/cycle';
 import { DayCell } from './DayCell';
+import { useCycleStore } from '../store/cycleStore';
 import { useTheme } from '../theme/useTheme';
 import { useTranslation } from 'react-i18next';
+import { useIsRTL } from '../i18n/useIsRTL';
 
 const WEEKDAYS_KEYS = ['weekdayMon', 'weekdayTue', 'weekdayWed', 'weekdayThu', 'weekdayFri', 'weekdaySat', 'weekdaySun'] as const;
 const COLS = 7;
@@ -20,15 +22,22 @@ interface CalendarGridProps {
 export function CalendarGrid({ firstInsertDate, onDayPress }: CalendarGridProps) {
   const { t, i18n } = useTranslation();
   const theme = useTheme();
+  const isRTL = useIsRTL();
   const locale = getDateFnsLocale(i18n.language);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  // Real period + cycle logs from the store: periodLogs so logged period
+  // days don't vanish in this enlarged month view, cycleLogs so the day
+  // colours stay log-aware (same anchor as the home screen) instead of
+  // drifting on the fixed firstInsert schedule.
+  const periodLogs = useCycleStore(s => s.periodLogs);
+  const cycleLogs = useCycleStore(s => s.cycleLogs);
 
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
 
   const days = useMemo(
-    () => getMonthDaysWithPeriods(year, month, firstInsertDate, []),
-    [year, month, firstInsertDate]
+    () => getMonthDaysWithPeriods(year, month, firstInsertDate, periodLogs, cycleLogs),
+    [year, month, firstInsertDate, periodLogs, cycleLogs]
   );
 
   // Build explicit rows of 7 cells
@@ -58,7 +67,7 @@ export function CalendarGrid({ firstInsertDate, onDayPress }: CalendarGridProps)
           onPress={() => setCurrentMonth(prev => subMonths(prev, 1))}
           style={[styles.navButton, { backgroundColor: theme.primaryLight }]}
         >
-          <Text style={[styles.navText, { color: theme.primaryDark }]}>‹</Text>
+          <Text style={[styles.navText, { color: theme.primaryDark }]}>{isRTL ? '›' : '‹'}</Text>
         </Pressable>
         <Text style={[styles.monthTitle, { color: theme.text }]}>
           {monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)}
@@ -67,7 +76,7 @@ export function CalendarGrid({ firstInsertDate, onDayPress }: CalendarGridProps)
           onPress={() => setCurrentMonth(prev => addMonths(prev, 1))}
           style={[styles.navButton, { backgroundColor: theme.primaryLight }]}
         >
-          <Text style={[styles.navText, { color: theme.primaryDark }]}>›</Text>
+          <Text style={[styles.navText, { color: theme.primaryDark }]}>{isRTL ? '‹' : '›'}</Text>
         </Pressable>
       </View>
 

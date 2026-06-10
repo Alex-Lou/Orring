@@ -17,7 +17,7 @@ import { GoodbyeFarewell } from '../src/components/GoodbyeFarewell';
 import { RestoreBackupModal } from '../src/components/RestoreBackupModal';
 import { serializeBackup } from '../src/utils/backup';
 import { dateKey } from '../src/utils/dateKey';
-import { styles } from './settings.styles';
+import { styles } from '../src/styles/settings.styles';
 
 export default function SettingsScreen() {
   const {

@@ -77,7 +77,12 @@ export function ConfirmModal({
                     pressed && { opacity: 0.55 },
                   ]}
                 >
-                  <Text style={[styles.btnLabel, { color: theme.textSecondary }]}>
+                  <Text
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                    style={[styles.btnLabel, { color: theme.textSecondary }]}
+                  >
                     {cancelLabel ?? t('cancel', { defaultValue: 'Annuler' })}
                   </Text>
                 </Pressable>
@@ -92,6 +97,9 @@ export function ConfirmModal({
                   ]}
                 >
                   <Text
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
                     style={[
                       styles.btnLabel,
                       destructive

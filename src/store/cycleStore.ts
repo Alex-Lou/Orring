@@ -11,6 +11,7 @@ import {
   scheduleOpenPeriodReminder,
 } from '../utils/notifications';
 import { getPeriodStats, findOpenPeriod, getLastCoveredDay } from '../utils/periods';
+import { upsertCycleLog, earliestInsertDate, sanitizeCycleLogs, isInsertCorrection, clampRemovalToInsertion } from '../utils/cycle';
 import { dateKey } from '../utils/dateKey';
 import type { BackupPayload } from '../utils/backup';
 import type {
@@ -140,12 +141,16 @@ export const useCycleStore = create<CycleState>()(
 
       insertRing: (date?: string) => {
         const insertDate = date || new Date().toISOString();
-        const newLog: CycleLog = { id: generateId(), date: insertDate, action: 'insert' };
-        const firstInsert = get().firstInsertDate || insertDate;
+        // Correcting the current cycle's insertion (edit in place) vs starting
+        // a new cycle (append) — see isInsertCorrection. This is what makes a
+        // backdated date (e.g. "inserted 21 May") actually anchor the cycle
+        // instead of a stale later-dated log winning.
+        const isCorrection = isInsertCorrection(get().cycleLogs, get().ringStatus, insertDate);
+        const newLogs = upsertCycleLog(get().cycleLogs, 'insert', insertDate, isCorrection, generateId());
         set({
-          cycleLogs: [...get().cycleLogs, newLog],
+          cycleLogs: newLogs,
           ringStatus: 'in',
-          firstInsertDate: firstInsert,
+          firstInsertDate: earliestInsertDate(newLogs, insertDate),
           // Auto-annule le timer temporaire quand on remet l'anneau
           tempRemovalStart: null,
         });
@@ -158,15 +163,21 @@ export const useCycleStore = create<CycleState>()(
       },
 
       removeRing: (date?: string) => {
-        const removeDate = date || new Date().toISOString();
-        const newLog: CycleLog = { id: generateId(), date: removeDate, action: 'remove' };
+        // Clamp a backdated removal so it can never predate the current
+        // insertion — a ring can't come out before it went in. Keeps the
+        // 7-day pause honest (no "removed before inserted" J1 glitch).
+        const removeDate = clampRemovalToInsertion(get().cycleLogs, date || new Date().toISOString());
+        // Re-logging a remove while the ring is already 'out' = correcting
+        // the current removal date → edit in place rather than stack.
+        const isCorrection = get().ringStatus === 'out';
+        const newLogs = upsertCycleLog(get().cycleLogs, 'remove', removeDate, isCorrection, generateId());
         set({
-          cycleLogs: [...get().cycleLogs, newLog],
+          cycleLogs: newLogs,
           ringStatus: 'out',
         });
         // Reschedule from the actual last insertion (NOT the removal date),
         // otherwise the next cycle's J-7/J-1 reminders would be offset.
-        rescheduleFromLastInsert([newLog]);
+        rescheduleFromLastInsert();
       },
 
       addPeriodLog: (log) => {
@@ -271,9 +282,12 @@ export const useCycleStore = create<CycleState>()(
 
       clearHistory: () => set({
         cycleLogs: [],
-        periodLogs: [],
         firstInsertDate: null,
         ringStatus: 'out',
+        // periodLogs intentionally PRESERVED. The period history is a separate
+        // dataset with its own reset ("Effacer toutes mes périodes" in the
+        // périodes tab); wiping the ring cycle must never nuke the user's
+        // règles. (Independent reset per section — explicit user request.)
       }),
 
       deleteCycleLog: (id) => {
@@ -341,7 +355,8 @@ export const useCycleStore = create<CycleState>()(
       // Key bumped to force-discard any data written by pre-v2.1.2 builds.
       // The old schema is incompatible and not recoverable, so fresh install it is.
       name: 'orring-storage-v2',
-      version: 1,
+      // v2: one-time self-heal of duplicate cycle logs (see migrate).
+      version: 2,
       storage: createJSONStorage(() => AsyncStorage),
       // Only persist data (see PERSISTED_KEYS), not actions or the
       // hydration flag.
@@ -351,7 +366,24 @@ export const useCycleStore = create<CycleState>()(
         // bump and only backfill newly-added fields from INITIAL_DATA.
         // Returning a clean slate here would silently wipe the user's
         // entire cycle / period history the moment `version` is bumped.
-        return { ...INITIAL_DATA, ...((persisted as Partial<CycleData>) ?? {}) };
+        const merged = { ...INITIAL_DATA, ...((persisted as Partial<CycleData>) ?? {}) } as CycleData;
+        // ── v2 self-heal ─────────────────────────────────────────────
+        // Collapse duplicate consecutive insert/remove logs left by the
+        // pre-correction-in-place builds (backdated re-logs that stacked
+        // up and made the calendar paint overlapping cycles). Then re-derive
+        // the reference date + ring state from the cleaned timeline so the
+        // three stay consistent — no manual "Recommencer tout" needed.
+        const cleaned = sanitizeCycleLogs(merged.cycleLogs ?? []);
+        merged.cycleLogs = cleaned;
+        if (cleaned.length > 0) {
+          const inserts = cleaned.filter(l => l.action === 'insert');
+          if (inserts.length > 0) {
+            merged.firstInsertDate = inserts
+              .reduce((a, b) => (new Date(a.date) <= new Date(b.date) ? a : b)).date;
+          }
+          merged.ringStatus = cleaned[cleaned.length - 1].action === 'insert' ? 'in' : 'out';
+        }
+        return merged;
       },
       onRehydrateStorage: () => () => {
         AsyncStorage.removeItem('orrniapp-storage').catch(() => {});

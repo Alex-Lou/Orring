@@ -5,7 +5,7 @@ import type { useTheme } from '../../theme/useTheme';
 import type { CycleInfo } from '../../utils/cycle';
 import { formatDateFr } from '../../utils/cycle';
 import { pickTodayPhraseIndex, pickInsertionPhraseIndex } from '../../utils/greetings';
-import { styles } from '../../../app/index.styles';
+import { styles } from '../../styles/index.styles';
 import {
   getGreetingKey,
   getGreetingIconKey,
@@ -20,6 +20,9 @@ interface GreetingHeaderProps {
   info: CycleInfo;
   userName: string | null;
   isRTL: boolean;
+  /** True during a temporary removal — the 3rd line must not claim the ring
+   *  is "in place" while the user is being told to put it back. */
+  isTempRemoved: boolean;
   theme: Theme;
   t: TFunction;
 }
@@ -31,7 +34,7 @@ interface GreetingHeaderProps {
  * their per-variant style fixes (sizeFix, nightAlignFix, rtlNightFlip, …).
  * Conditional rendering, RTL/flip logic and values are unchanged.
  */
-export function GreetingHeader({ info, userName, isRTL, theme, t }: GreetingHeaderProps) {
+export function GreetingHeader({ info, userName, isRTL, isTempRemoved, theme, t }: GreetingHeaderProps) {
   return (
     <>
       <View
@@ -194,13 +197,27 @@ export function GreetingHeader({ info, userName, isRTL, theme, t }: GreetingHead
           date: todayStr,
           defaultValue: todayStr,
         });
-        // ── Ring-insertion date wrapped likewise (3 variants).
-        const insertStr = formatDateFr(info.ringInsertDate, 'EEEE dd MMMM');
-        const insertIdx = pickInsertionPhraseIndex(info.ringInsertDate);
-        const insertPhrase = t(`insertionPhrases.${insertIdx}`, {
-          date: insertStr,
-          defaultValue: t('since', { date: formatDateFr(info.ringInsertDate, 'dd MMMM') }),
-        });
+        // ── Third line: STATUS-AWARE. While the ring is in, the warm
+        // "anneau en place depuis…" insertion phrase. During the pause
+        // (ring out) that line would contradict the big PAUSE state, so we
+        // show the pause + when it started (the actual removal date) instead.
+        const ringIsIn = info.nextAction === 'remove';
+        let insertPhrase: string;
+        if (isTempRemoved) {
+          // Ring physically out (short pause) — never say "anneau en place".
+          insertPhrase = t('tempRemovedRing');
+        } else if (ringIsIn) {
+          const insertStr = formatDateFr(info.ringInsertDate, 'EEEE dd MMMM');
+          const insertIdx = pickInsertionPhraseIndex(info.ringInsertDate);
+          insertPhrase = t(`insertionPhrases.${insertIdx}`, {
+            date: insertStr,
+            defaultValue: t('since', { date: formatDateFr(info.ringInsertDate, 'dd MMMM') }),
+          });
+        } else {
+          insertPhrase = info.removalDateTime
+            ? `${t('ringRemoved')} · ${t('since', { date: formatDateFr(info.removalDateTime, 'dd MMMM') })}`
+            : t('ringRemoved');
+        }
         return (
           <>
             <Text

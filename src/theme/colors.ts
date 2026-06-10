@@ -5,10 +5,12 @@ export const colors = {
   primaryDark: '#7F6EBA',
   primarySoft: '#F4F0FA',
 
-  // Backgrounds
-  background: '#F6F2FB',
-  surface: '#FFFFFF',
-  surfaceElevated: '#F0EAF7',
+  // Backgrounds — main canvas kept in step with the dynamic LIGHT theme
+  // (useTheme.ts): a held lavender, deliberately not white, so the global
+  // luminosity stays soft. Surfaces/cards remain lighter just above it.
+  background: '#E7DDF0',
+  surface: '#F2ECF9',
+  surfaceElevated: '#EAE2F4',
 
   // Status colors (teintes désaturées pour plus de cohérence)
   ringIn: '#9EC6A4',      // Vert sauge doux - anneau en place

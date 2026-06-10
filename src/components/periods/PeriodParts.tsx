@@ -10,7 +10,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import { spacing, borderRadius } from '../../theme';
 import { useTheme } from '../../theme/useTheme';
-import { styles } from '../../../app/periods.styles';
+import { styles } from '../../styles/periods.styles';
 
 export function StatCard({
   theme,
