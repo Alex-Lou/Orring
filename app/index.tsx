@@ -15,7 +15,7 @@ import { Onboarding } from '../src/components/Onboarding';
 import { TempRemovalCountdown } from '../src/components/TempRemovalCountdown';
 import { WithdrawalGauge } from '../src/components/WithdrawalGauge';
 import {
-  getCycleInfoFromLogs, formatDateTimeFr,
+  getCycleInfoFromLogs, computeRingCountdown, formatDateTimeFr,
   RING_IN_DAYS, RING_OUT_DAYS,
 } from '../src/utils/cycle';
 import { useCycleStore } from '../src/store/cycleStore';
@@ -42,11 +42,25 @@ export default function MyCycleScreen() {
   const theme = useTheme();
   const confirm = useConfirm();
 
+  // Live clock — drives the whole home screen's real-time refresh. Hooks live
+  // ABOVE the onboarding early-return so the hook order is identical every
+  // render (Rules of Hooks — a hook after the return crashed the app the
+  // moment onboarding completed and `info` flipped from null to present).
+  // 30s cadence keeps the minute display accurate.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // `info` recomputes on every tick → currentDay / daysUntilChange / isOverdue
+  // / phase all stay live without relaunching the app (the "temps réel" ask),
+  // and the whole screen flips together at the day boundary.
   const info = useMemo(
     () => firstInsertDate
-      ? getCycleInfoFromLogs(new Date(firstInsertDate), cycleLogs, ringStatus)
+      ? getCycleInfoFromLogs(new Date(firstInsertDate), cycleLogs, ringStatus, new Date(now))
       : null,
-    [firstInsertDate, cycleLogs, ringStatus]
+    [firstInsertDate, cycleLogs, ringStatus, now]
   );
 
   const isRingIn = ringStatus === 'in';
@@ -56,38 +70,15 @@ export default function MyCycleScreen() {
   // place" — that contradicts the "J'ai remis l'anneau" action.
   const isTempRemoved = !!tempRemovalStart;
 
-  // Live clock so the under-24h countdown ticks down — and flips to "en
-  // retard" past the due time — on its OWN, without relaunching the app.
-  // 30s cadence keeps the minute display accurate. Hooks live ABOVE the
-  // onboarding early-return so the hook order is identical every render
-  // (Rules of Hooks — a hook after the return crashed the app the moment
-  // onboarding completed and `info` flipped from null to present).
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Ring-center countdown override. Above 24h → the whole-day count (null).
-  // Under 24h → exact "Xh Ym". Past due → the overdue duration ("en retard"),
-  // ticking up. { value, labelKey } so the label matches each case.
+  // Ring-center countdown override (pure, unit-tested helper): null above 24h,
+  // exact "Xh Ym" under 24h, and "de retard" ONLY once info.isOverdue flips —
+  // the SAME day-grained basis as the pill / greeting, so they never disagree
+  // within a calendar day.
   const nextActionAt = info ? (isRingIn ? info.removalDateTime : info.nextInsertionDateTime) : null;
-  const countdown = useMemo(() => {
-    if (isTempRemoved || !nextActionAt) return null;
-    const ms = nextActionAt.getTime() - now;
-    const fmt = (totalMs: number) => {
-      const totalMin = Math.floor(totalMs / 60000);
-      const h = Math.floor(totalMin / 60);
-      const m = totalMin % 60;
-      return h > 0 ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`;
-    };
-    if (ms <= 0) {
-      const lateDays = Math.floor(-ms / 86400000);
-      return { value: lateDays >= 1 ? `${lateDays} j` : fmt(-ms), labelKey: 'overdueLabel' };
-    }
-    if (ms < 86400000) return { value: fmt(ms), labelKey: 'timeBeforeActionLabel' };
-    return null;
-  }, [isTempRemoved, nextActionAt, now]);
+  const countdown = useMemo(
+    () => (isTempRemoved || !info ? null : computeRingCountdown(nextActionAt, info.isOverdue, now)),
+    [isTempRemoved, info, nextActionAt, now],
+  );
 
   // The "awaiting re-insertion" state — the 7-day pause is OVER but the
   // user hasn't yet logged a new insert. We render a scaffold (inactive)

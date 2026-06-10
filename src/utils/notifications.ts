@@ -1,7 +1,8 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { addDays } from 'date-fns';
-import { RING_IN_DAYS, CYCLE_LENGTH } from './cycle';
+import { RING_IN_DAYS, RING_OUT_DAYS, CYCLE_LENGTH } from './cycle';
+import type { RingStatus } from '../store/cycleStore.types';
 import i18n from '../i18n';
 import { getNotifCopy } from '../i18n/notificationStrings';
 
@@ -86,30 +87,60 @@ function atHour(date: Date, hour: number, minute: number, offsetDays: number = 0
   return d;
 }
 
+/**
+ * Phase-aware ring reminders. Only the CURRENT phase is scheduled, so a
+ * reminder — including the new overdue nudges — can never fire for an action
+ * already done:
+ *   • ring IN  → reminders to REMOVE (J-7 / J-1 / J0) + overdue (J+1 / J+3),
+ *                anchored on insertion + 21.
+ *   • ring OUT → reminders to RE-INSERT (J-7 / J-1 / J0) + overdue (J+1 / J+3),
+ *                anchored on the ACTUAL removal + 7 (more accurate than the
+ *                old insertion+28 guess for early/late removals; falls back to
+ *                insertion + 28 only if the removal date is unknown).
+ *
+ * Removing / re-inserting reschedules into the other phase, and `cancelByPrefix`
+ * drops the previous phase's queue — so the J+1/J+3 "en retard" reminders fire
+ * ONLY while you're genuinely overdue, never after you've acted.
+ */
 export async function scheduleRingNotifications(
   insertionDate: Date,
+  ringStatus: RingStatus,
+  lastRemovalDate: Date | null = null,
   reminderHour: number = 9,
-  reminderMinute: number = 0
+  reminderMinute: number = 0,
 ): Promise<void> {
   await ensureAndroidChannel();
   // Cancel ONLY the ring notifs — don't touch period or temp-removal IDs.
   await cancelByPrefix(RING_PREFIX);
 
-  const removalDate = addDays(insertionDate, RING_IN_DAYS);
-  const nextInsertDate = addDays(insertionDate, CYCLE_LENGTH);
   const now = new Date();
-
   const c = getNotifCopy(i18n.language);
-  const events: Array<{ date: Date; title: string; body: string; suffix: string }> = [
-    // ─── RETRAIT ───
-    { date: atHour(removalDate, reminderHour, reminderMinute, -7), title: c.removeJ7.title, body: c.removeJ7.body, suffix: 'remove-j7' },
-    { date: atHour(removalDate, reminderHour, reminderMinute, -1), title: c.removeJ1.title, body: c.removeJ1.body, suffix: 'remove-j1' },
-    { date: atHour(removalDate, reminderHour, reminderMinute, 0), title: c.removeJ0.title, body: c.removeJ0.body, suffix: 'remove-j0' },
-    // ─── INSERTION prochain cycle ───
-    { date: atHour(nextInsertDate, reminderHour, reminderMinute, -7), title: c.insertJ7.title, body: c.insertJ7.body, suffix: 'insert-j7' },
-    { date: atHour(nextInsertDate, reminderHour, reminderMinute, -1), title: c.insertJ1.title, body: c.insertJ1.body, suffix: 'insert-j1' },
-    { date: atHour(nextInsertDate, reminderHour, reminderMinute, 0), title: c.insertJ0.title, body: c.insertJ0.body, suffix: 'insert-j0' },
-  ];
+  const at = (base: Date, offsetDays: number) => atHour(base, reminderHour, reminderMinute, offsetDays);
+  const events: Array<{ date: Date; title: string; body: string; suffix: string }> = [];
+
+  if (ringStatus === 'in') {
+    // ─── Waiting to REMOVE (around insertion + 21) ───
+    const removalDate = addDays(insertionDate, RING_IN_DAYS);
+    events.push(
+      { date: at(removalDate, -7), title: c.removeJ7.title, body: c.removeJ7.body, suffix: 'remove-j7' },
+      { date: at(removalDate, -1), title: c.removeJ1.title, body: c.removeJ1.body, suffix: 'remove-j1' },
+      { date: at(removalDate, 0), title: c.removeJ0.title, body: c.removeJ0.body, suffix: 'remove-j0' },
+      { date: at(removalDate, 1), title: c.removeOverdue1.title, body: c.removeOverdue1.body, suffix: 'remove-late1' },
+      { date: at(removalDate, 3), title: c.removeOverdue3.title, body: c.removeOverdue3.body, suffix: 'remove-late3' },
+    );
+  } else {
+    // ─── Waiting to RE-INSERT (actual removal + 7-day pause) ───
+    const reInsertDate = lastRemovalDate
+      ? addDays(lastRemovalDate, RING_OUT_DAYS)
+      : addDays(insertionDate, CYCLE_LENGTH);
+    events.push(
+      { date: at(reInsertDate, -7), title: c.insertJ7.title, body: c.insertJ7.body, suffix: 'insert-j7' },
+      { date: at(reInsertDate, -1), title: c.insertJ1.title, body: c.insertJ1.body, suffix: 'insert-j1' },
+      { date: at(reInsertDate, 0), title: c.insertJ0.title, body: c.insertJ0.body, suffix: 'insert-j0' },
+      { date: at(reInsertDate, 1), title: c.insertOverdue1.title, body: c.insertOverdue1.body, suffix: 'insert-late1' },
+      { date: at(reInsertDate, 3), title: c.insertOverdue3.title, body: c.insertOverdue3.body, suffix: 'insert-late3' },
+    );
+  }
 
   for (const ev of events) {
     if (ev.date > now) {

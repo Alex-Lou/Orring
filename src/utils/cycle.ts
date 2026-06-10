@@ -252,6 +252,53 @@ export function getCycleInfoFromLogs(
   };
 }
 
+export type RingCountdownLabel = 'timeBeforeActionLabel' | 'overdueLabel';
+
+export interface RingCountdown {
+  value: string;
+  labelKey: RingCountdownLabel;
+}
+
+/**
+ * Ring-center countdown shown under the big day number, or `null` to fall
+ * back to the whole-day count. Pure + unit-tested so the home screen stays a
+ * thin shell.
+ *
+ *  • > 24h to the action → null (the screen shows the day count).
+ *  • 0 < t < 24h         → exact "Xh Ym" + "avant le {action}".
+ *  • at/just past due, but the cycle phase hasn't flipped to overdue yet
+ *    (same calendar day) → "0 min" + "avant le {action}" — so the ring never
+ *    says "de retard" before the pill / greeting / phase do.
+ *  • isOverdue (the phase has officially flipped) → the overdue duration
+ *    ("Xh Ym" or "X j") + "de retard", counting up from the due time.
+ *
+ * `isOverdue` is the SAME day-grained flag the rest of the screen uses, so
+ * every element agrees on the moment the action becomes "en retard" (the two
+ * time bases no longer disagree within a calendar day).
+ */
+export function computeRingCountdown(
+  nextActionAt: Date | null,
+  isOverdue: boolean,
+  now: number,
+): RingCountdown | null {
+  if (!nextActionAt) return null;
+  const ms = nextActionAt.getTime() - now;
+  const fmt = (totalMs: number) => {
+    const totalMin = Math.floor(Math.max(0, totalMs) / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return h > 0 ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`;
+  };
+  if (isOverdue) {
+    const lateMs = Math.max(0, -ms);
+    const lateDays = Math.floor(lateMs / 86400000);
+    return { value: lateDays >= 1 ? `${lateDays} j` : fmt(lateMs), labelKey: 'overdueLabel' };
+  }
+  if (ms > 0 && ms < 86400000) return { value: fmt(ms), labelKey: 'timeBeforeActionLabel' };
+  if (ms <= 0) return { value: fmt(0), labelKey: 'timeBeforeActionLabel' };
+  return null;
+}
+
 // ─── Cycle-log mutation helpers (pure — unit-tested) ───
 
 /**

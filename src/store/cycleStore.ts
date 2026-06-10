@@ -94,8 +94,17 @@ export const useCycleStore = create<CycleState>()(
         const logs = [...get().cycleLogs, ...extraLogs];
         const lastInsert = logs.filter(l => l.action === 'insert').pop();
         if (!lastInsert) return;
+        // Phase-aware: the scheduler lays down ONLY the current phase's
+        // reminders (remove vs re-insert) + its J+1/J+3 overdue nudges, so
+        // nothing fires for an action already done. Re-insertion reminders
+        // are anchored on the ACTUAL last removal (removal + 7).
+        const lastRemoval = logs
+          .filter(l => l.action === 'remove')
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
         scheduleRingNotifications(
           new Date(lastInsert.date),
+          get().ringStatus,
+          lastRemoval ? new Date(lastRemoval.date) : null,
           get().reminderHour,
           get().reminderMinute,
         ).catch(() => {});
@@ -156,10 +165,10 @@ export const useCycleStore = create<CycleState>()(
         });
         // Annule la notif du timer si elle était prévue
         cancelTempRemovalNotif().catch(() => {});
-        // Schedule notifications for this cycle from the fresh insert date.
-        if (get().notificationsEnabled) {
-          scheduleRingNotifications(new Date(insertDate), get().reminderHour, get().reminderMinute).catch(() => {});
-        }
+        // Ring is now IN → schedule this phase's reminders (removal J-7/J-1/J0
+        // + overdue J+1/J+3) from the freshly-set state, via the shared
+        // phase-aware rescheduler. No-op if notifications are disabled.
+        rescheduleFromLastInsert();
       },
 
       removeRing: (date?: string) => {

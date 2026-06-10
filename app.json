@@ -33,7 +33,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.orrniapp",
-      "versionCode": 32,
+      "versionCode": 33,
       "allowBackup": false
     },
     "plugins": [

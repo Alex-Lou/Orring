@@ -18,6 +18,7 @@ import {
   sanitizeCycleLogs,
   isInsertCorrection,
   clampRemovalToInsertion,
+  computeRingCountdown,
 } from '../utils/cycle';
 import { addDays, startOfDay } from 'date-fns';
 import i18n from '../i18n';
@@ -561,5 +562,46 @@ describe('backdated removal reactivity (the J3 case)', () => {
     const info = getCycleInfoFromLogs(new Date(logs[0].date), logs, 'out', today);
     expect(info.daysUntilChange).toBe(7);                      // removed today → full pause ahead
     expect(RING_OUT_DAYS - info.daysUntilChange + 1).toBe(1);  // pause J1
+  });
+});
+
+// ─── Ring-center countdown (home screen) — pure + day-consistent ───
+
+describe('computeRingCountdown', () => {
+  const due = new Date(2026, 5, 22, 9, 0, 0).getTime(); // scheduled action instant
+  const H = 3600000, MIN = 60000, DAY = 86400000;
+
+  test('no nextActionAt → null (falls back to whole-day count)', () => {
+    expect(computeRingCountdown(null, false, due)).toBeNull();
+  });
+
+  test('more than 24h before → null', () => {
+    expect(computeRingCountdown(new Date(due), false, due - 25 * H)).toBeNull();
+  });
+
+  test('under 24h before → exact "Xh Ym" with the before-action label', () => {
+    expect(computeRingCountdown(new Date(due), false, due - 5 * H))
+      .toEqual({ value: '5 h 00', labelKey: 'timeBeforeActionLabel' });
+    expect(computeRingCountdown(new Date(due), false, due - 30 * MIN))
+      .toEqual({ value: '30 min', labelKey: 'timeBeforeActionLabel' });
+  });
+
+  // The MEDIUM review finding: past the due clock-time but the cycle phase has
+  // NOT flipped to overdue yet (same calendar day) → never say "de retard".
+  test('at/just past due while NOT yet overdue → "0 min", never "de retard"', () => {
+    expect(computeRingCountdown(new Date(due), false, due))
+      .toEqual({ value: '0 min', labelKey: 'timeBeforeActionLabel' });
+    expect(computeRingCountdown(new Date(due), false, due + 30 * MIN))
+      .toEqual({ value: '0 min', labelKey: 'timeBeforeActionLabel' });
+  });
+
+  test('overdue (phase flipped), under a day late → "Xh Ym de retard"', () => {
+    expect(computeRingCountdown(new Date(due), true, due + 2 * H))
+      .toEqual({ value: '2 h 00', labelKey: 'overdueLabel' });
+  });
+
+  test('overdue, a full day or more late → "X j de retard"', () => {
+    expect(computeRingCountdown(new Date(due), true, due + 2 * DAY + 3 * H))
+      .toEqual({ value: '2 j', labelKey: 'overdueLabel' });
   });
 });
