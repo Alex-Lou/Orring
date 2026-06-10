@@ -1,6 +1,6 @@
 # Orring — Checklist de publication Play Store
 
-App : **Orring** · package `com.orrniapp` · version **2.7.0** · versionCode **32**
+App : **Orring** · package `com.orrniapp` · version **2.7.0** · versionCode **33**
 
 ---
 
@@ -13,8 +13,19 @@ App : **Orring** · package `com.orrniapp` · version **2.7.0** · versionCode *
 - [x] `allowBackup=false` (données de santé hors backup cloud Google).
 - [x] Notifications localisées dans les 10 langues.
 - [x] Locales de date complètes (nl, ru).
-- [x] Tests verts (46/46), `tsc` sans erreur.
+- [x] Tests verts (81/81), `tsc` sans erreur, hooks ordonnés (Rules of Hooks).
 - [x] Error boundary globale, garde anti-effacement dans le store.
+
+### Durcissement (passe de release)
+
+- [x] Retrait impossible avant l'insertion (clamp pur testé + garde-fou réel dans le modal).
+- [x] Anneau « temporairement retiré » cohérent partout (anneau, pastille, salutation).
+- [x] Compteur d'accueil **temps réel** + libellé « de retard » aligné sur la bascule de phase (helper pur `computeRingCountdown`, testé).
+- [x] Reset accueil = anneau seul (redemande date/heure) ; reset usine total dans Réglages.
+- [x] Notifs de **retard J+1/J+3** phase-aware (ne sonnent que si réellement en retard, annulées dès l'action), 10 langues, sans claim médical.
+- [x] **Revue adversariale 5 dimensions** : 0 bloquant, 0 high.
+- [x] Aucun SDK de tracking/analytics → Sécurité des données = aucune collecte.
+- [x] versionCode **33** aligné (`app.json` + `android/app/build.gradle`).
 
 ---
 
@@ -32,7 +43,7 @@ cd android
 Vérifier la signature et la version de l'AAB :
 
 ```powershell
-# Version (doit afficher versionCode 32 / versionName 2.7.0)
+# Version (doit afficher versionCode 33 / versionName 2.7.0)
 & "$env:ANDROID_HOME\build-tools\<version>\aapt2" dump badging app-release.aab  # ou via bundletool
 # Signature
 jarsigner -verify -verbose -certs app-release.aab
@@ -81,12 +92,11 @@ jarsigner -verify -verbose -certs app-release.aab
 
 - **Compteur « jours restants »** : ✅ recalé sur la date d'action en jours calendaires
   (robuste aux pose/retrait proches de minuit), cohérent avec les dates affichées + les notifs.
-- **Écran d'erreur** (error boundary) : affiché en français par défaut (clés
-  `errorTitle/errorBody/errorRetry` pas encore ajoutées aux 10 langues). Cas rare.
+- **Écran d'erreur** (error boundary) : clés `errorTitle/errorBody/errorRetry`
+  désormais localisées dans les 10 langues.
 - **`translations.ts`** (~3700 lignes) gardé en un seul fichier : données i18n pures de
   10 langues ; le scinder risquerait une perte silencieuse de clés de traduction. Tous les
   autres fichiers de code sont < 400 lignes.
 - **Artefacts locaux** `releases/` / `dist/` : non suivis par git, à garder hors du dépôt.
 - **Smoke-test device recommandé** sur les écrans refondus (accueil, périodes, calendrier,
-  onboarding, anneau) avant promotion en production — refactor par déplacement pur, validé
-  tsc (0 erreur) + tests (46/46).
+  onboarding, anneau) avant promotion en production — validé tsc (0 erreur) + tests (81/81).
