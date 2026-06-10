@@ -40,7 +40,7 @@ yarn-error.*
 /ios
 /android
 
-# Claude Code worktrees
+# Local tooling
 .claude/
 
 # IDE
@@ -57,6 +57,9 @@ assets/king.png
 
 # Local build logs
 build-out/
+
+# Local release artifacts (signed APK/AAB dumps, kept on disk only)
+releases/
 
 # Halo-strip backups (pristine copies of drawer-icon PNGs kept locally
 # so we can rerun the flood-fill with different params without losing

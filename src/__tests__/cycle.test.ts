@@ -13,6 +13,8 @@ import {
   getStatusLabel,
   getStatusEmoji,
 } from '../utils/cycle';
+import { addDays, startOfDay } from 'date-fns';
+import i18n from '../i18n';
 import type { CycleLog, PeriodLog } from '../store/cycleStore';
 
 // ─── Constants ───
@@ -147,7 +149,10 @@ describe('getCycleInfoFromLogs', () => {
     expect(info.isOverdue).toBe(false);
   });
 
-  test('day 15 - ring in, 7 days until remove', () => {
+  // `daysUntilChange` counts whole calendar days to the next action's DATE
+  // (removal on day 22), so it matches the date shown on screen + the
+  // notifications. Day 15 → removal day 22 is 7 calendar days away.
+  test('day 15 - ring in, 7 days until removal', () => {
     const info = getCycleInfoFromLogs(firstInsert, [], 'in', new Date(2026, 3, 11));
     expect(info.currentDay).toBe(15);
     expect(info.nextAction).toBe('remove');
@@ -155,10 +160,11 @@ describe('getCycleInfoFromLogs', () => {
     expect(info.progress).toBeCloseTo(15 / 21, 1);
   });
 
-  test('day 25 - ring out phase, 4 days until insert', () => {
+  test('day 25 - ring out phase, 4 days until re-insertion', () => {
     const info = getCycleInfoFromLogs(firstInsert, [], 'out', new Date(2026, 3, 21));
     expect(info.currentDay).toBe(25);
     expect(info.nextAction).toBe('insert');
+    // Re-insertion lands on day 29 → 4 calendar days from day 25.
     expect(info.daysUntilChange).toBe(4);
   });
 
@@ -179,16 +185,27 @@ describe('getCycleInfoFromLogs', () => {
 describe('generateCycleHistory', () => {
   const firstInsert = new Date(2026, 0, 1);
 
-  test('generates correct number of cycles', () => {
-    const history = generateCycleHistory(firstInsert, [], [], 6);
-    expect(history.length).toBe(6);
+  // History is built from real insert logs (past/current) plus predicted
+  // future cycles. With no logs and an old firstInsert almost everything is
+  // in the past, so we drive these with logs to test the real contract.
+  test('generates one entry per insert log', () => {
+    const logs: CycleLog[] = [
+      { id: '1', date: new Date(2026, 0, 1).toISOString(), action: 'insert' },
+      { id: '2', date: new Date(2026, 0, 29).toISOString(), action: 'insert' },
+    ];
+    const history = generateCycleHistory(firstInsert, logs, []);
+    const fromLogs = history.filter(h => h.actualInsertDate !== null);
+    expect(fromLogs.length).toBe(2);
+    expect(fromLogs[0].cycleNumber).toBe(1);
   });
 
-  test('marks current cycle correctly', () => {
-    const today = new Date();
-    const recentInsert = new Date(today);
-    recentInsert.setDate(today.getDate() - 5); // 5 days ago
-    const history = generateCycleHistory(recentInsert, [], [], 6);
+  test('marks the cycle containing today as current', () => {
+    // An insertion 5 days ago → today sits inside that cycle's 28-day window.
+    const today = startOfDay(new Date());
+    const logs: CycleLog[] = [
+      { id: '1', date: addDays(today, -5).toISOString(), action: 'insert' },
+    ];
+    const history = generateCycleHistory(today, logs, []);
     const current = history.find(h => h.status === 'current');
     expect(current).toBeDefined();
   });
@@ -240,12 +257,20 @@ describe('formatDateFr', () => {
   });
 });
 
+// getStatusLabel maps a day-status to an i18n key, so assert against the
+// resolved translation (robust to copy changes) rather than a hardcoded
+// French substring, which was the cause of the previous failures.
 describe('getStatusLabel', () => {
-  test('insert_day label', () => expect(getStatusLabel('insert_day')).toContain('anneau'));
-  test('remove_day label', () => expect(getStatusLabel('remove_day')).toContain('anneau'));
-  test('ring_in label', () => expect(getStatusLabel('ring_in')).toContain('place'));
-  test('ring_out label', () => expect(getStatusLabel('ring_out')).toContain('ause'));
-  test('none label', () => expect(getStatusLabel('none')).toBe(''));
+  test('insert_day → insert label', () => expect(getStatusLabel('insert_day')).toBe(i18n.t('insert')));
+  test('remove_day → remove label', () => expect(getStatusLabel('remove_day')).toBe(i18n.t('remove')));
+  test('ring_in → ringInPlace label', () => expect(getStatusLabel('ring_in')).toBe(i18n.t('ringInPlace')));
+  test('ring_out → pause label', () => expect(getStatusLabel('ring_out')).toBe(i18n.t('pause')));
+  test('none label is empty', () => expect(getStatusLabel('none')).toBe(''));
+  test('known statuses produce a non-empty label', () => {
+    for (const s of ['insert_day', 'remove_day', 'ring_in', 'ring_out'] as const) {
+      expect(getStatusLabel(s).length).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe('getStatusEmoji', () => {

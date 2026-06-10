@@ -1,12 +1,10 @@
 import { addDays, differenceInDays, format, isSameDay, startOfDay, isBefore, isAfter } from 'date-fns';
-import { fr, enUS, es, pt, de, ar, zhCN, ja } from 'date-fns/locale';
 import type { CycleLog, PeriodLog, RingStatus } from '../store/cycleStore';
 import i18n from '../i18n';
-
-const DATE_LOCALES: Record<string, any> = { fr, en: enUS, es, pt, de, ar, zh: zhCN, ja };
+import { getDateFnsLocale } from '../i18n/dateLocales';
 
 function getLocale() {
-  return DATE_LOCALES[i18n.language] || fr;
+  return getDateFnsLocale(i18n.language);
 }
 
 export const RING_IN_DAYS = 21;
@@ -126,10 +124,20 @@ export function getCycleInfoFromLogs(
 
   const t = i18n.t.bind(i18n);
 
+  // `daysUntilChange` = whole CALENDAR days from today to the next action's
+  // date (ring removal lands on day 22 = cycleStart + 21 ; re-insertion on
+  // day 29 = cycleStart + 28). It's derived from `nextActionDate` with
+  // startOfDay on BOTH ends, so:
+  //   • the big countdown always matches the removal/insertion DATE shown
+  //     just below it on the home screen, and the scheduled notifications;
+  //   • a log saved late at night (e.g. 23h50) can never shift the count by
+  //     a day — we compare day-starts, never raw timestamps.
+  const todayStart = startOfDay(today);
+
   if (currentDay <= RING_IN_DAYS) {
-    daysUntilChange = RING_IN_DAYS - currentDay;
     nextAction = 'remove';
     nextActionDate = addDays(cycleStart, RING_IN_DAYS);
+    daysUntilChange = Math.max(0, differenceInDays(nextActionDate, todayStart));
     progress = currentDay / RING_IN_DAYS;
     phaseLabel = currentDay === 1 ? t('insertionDay') : t('ringInPlace');
 
@@ -139,15 +147,22 @@ export function getCycleInfoFromLogs(
     }
   } else {
     const dayInPause = currentDay - RING_IN_DAYS;
-    daysUntilChange = RING_OUT_DAYS - dayInPause;
     nextAction = 'insert';
     nextActionDate = addDays(cycleStart, CYCLE_LENGTH);
+    daysUntilChange = Math.max(0, differenceInDays(nextActionDate, todayStart));
     progress = dayInPause / RING_OUT_DAYS;
     phaseLabel = currentDay === RING_IN_DAYS + 1 ? t('removalDay') : t('ringRemoved');
 
     if (ringStatus === 'in') {
+      // Overdue removal: a pause-week calendar day but the ring is still
+      // in. The next action is REMOVE (overdue), not insert — keep
+      // nextAction / nextActionDate / countdown consistent with the
+      // ActionButton and the "should have come out" phase copy.
       isOverdue = true;
       phaseLabel = t('phaseStillIn');
+      nextAction = 'remove';
+      nextActionDate = addDays(cycleStart, RING_IN_DAYS);
+      daysUntilChange = Math.max(0, differenceInDays(nextActionDate, todayStart));
     }
   }
 
@@ -343,8 +358,4 @@ export function getStatusEmoji(status: DayStatus): string {
     case 'ring_out': return '🩸';
     default: return '';
   }
-}
-
-export function toDateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }

@@ -2,21 +2,19 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, Image, StyleSheet, ScrollView, Modal, Pressable, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
-import { addMonths, isSameMonth } from 'date-fns';
+import { isSameMonth } from 'date-fns';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '../src/theme';
 import { MiniMonth } from '../src/components/MiniMonth';
 import { CalendarGrid } from '../src/components/CalendarGrid';
 import { DayNoteModal } from '../src/components/DayNoteModal';
-import { getMonthDaysWithPeriods, getCycleInfoFromLogs, CycleDay, formatDateFr } from '../src/utils/cycle';
+import { getMonthDaysWithPeriods, getCycleInfoFromLogs, CycleDay } from '../src/utils/cycle';
 import { useCycleStore } from '../src/store/cycleStore';
 import type { DayMark } from '../src/store/cycleStore';
 import { useTheme } from '../src/theme/useTheme';
 import { useTranslation } from 'react-i18next';
 import { useIsRTL } from '../src/i18n/useIsRTL';
-
-function toDateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+import { dateKey } from '../src/utils/dateKey';
 
 export default function CalendarScreen() {
   const { firstInsertDate, periodLogs, dayNotes, saveDayNote, deleteDayNote, insertRing, removeRing, cycleLogs, ringStatus } = useCycleStore();
@@ -25,6 +23,12 @@ export default function CalendarScreen() {
   const { width } = useWindowDimensions();
   const [selectedMonth, setSelectedMonth] = useState<{ year: number; month: number } | null>(null);
   const [editingDay, setEditingDay] = useState<CycleDay | null>(null);
+  // v2.6.5: year-cursor navigation — replaces the fixed -3..+8 month
+  // sliding window. The user can scroll back across years to consult
+  // notes / moods from any past month, and forward to anticipate.
+  // Default lands on today's year; the "Aujourd'hui" pill jumps back
+  // when the cursor has drifted away.
+  const [yearCursor, setYearCursor] = useState<number>(() => new Date().getFullYear());
 
   const theme = useTheme();
   const insertDate = firstInsertDate ? new Date(firstInsertDate) : null;
@@ -44,35 +48,43 @@ export default function CalendarScreen() {
     [dayNotes]
   );
 
+  // Render the FULL year (12 months, Jan → Dec) of the active
+  // `yearCursor`. Past years stay browseable indefinitely so any
+  // saved note / mood from years back stays accessible. Future
+  // years also work for forward planning, but the prediction-only
+  // months are styled by `getMonthDaysWithPeriods` based on the
+  // single insertion-date anchor — no extra data is fabricated.
   const months = useMemo(() => {
     const result: { year: number; month: number; days: CycleDay[]; isCurrentMonth: boolean }[] = [];
-    for (let i = -3; i <= 8; i++) {
-      const date = addMonths(today, i);
-      const year = date.getFullYear();
-      const month = date.getMonth();
+    for (let m = 0; m < 12; m++) {
+      const monthDate = new Date(yearCursor, m, 1);
       result.push({
-        year, month,
-        days: getMonthDaysWithPeriods(year, month, insertDate, periodLogs),
-        isCurrentMonth: isSameMonth(date, today),
+        year: yearCursor,
+        month: m,
+        days: getMonthDaysWithPeriods(yearCursor, m, insertDate, periodLogs),
+        isCurrentMonth: isSameMonth(monthDate, today),
       });
     }
     return result;
-  }, [firstInsertDate, periodLogs]);
+  }, [yearCursor, firstInsertDate, periodLogs]);
+
+  const todayYear = today.getFullYear();
+  const isOnTodayYear = yearCursor === todayYear;
 
   // Get note for currently editing day
-  const editingDayKey = editingDay ? toDateKey(editingDay.date) : '';
+  const editingDayKey = editingDay ? dateKey(editingDay.date) : '';
   const editingNote = dayNotes.find(n => n.dateKey === editingDayKey);
 
   const handleSaveNote = useCallback((text: string, marks: DayMark[]) => {
     if (editingDay) {
-      saveDayNote(toDateKey(editingDay.date), text, marks);
+      saveDayNote(dateKey(editingDay.date), text, marks);
       setEditingDay(null);
     }
   }, [editingDay, saveDayNote]);
 
   const handleDeleteNote = useCallback(() => {
     if (editingDay) {
-      deleteDayNote(toDateKey(editingDay.date));
+      deleteDayNote(dateKey(editingDay.date));
       setEditingDay(null);
     }
   }, [editingDay, deleteDayNote]);
@@ -106,6 +118,47 @@ export default function CalendarScreen() {
           <LegendItem color="#DBEAFE" label={t('legendInsert')} textColor={theme.textSecondary} />
           <LegendItem color="#FEF3C7" label={t('legendRemove')} textColor={theme.textSecondary} />
         </Animated.View>
+
+        {/* Year navigation — sits between the legend and the grid.
+            Compact pill with prev/next arrows + a "Aujourd'hui"
+            shortcut that appears only when the cursor has moved off
+            the real today's year. */}
+        {insertDate && (
+          <View style={[styles.yearBar, { backgroundColor: theme.surface }]}>
+            <Pressable
+              onPress={() => setYearCursor(y => y - 1)}
+              hitSlop={8}
+              style={({ pressed }) => [styles.yearArrow, pressed && { opacity: 0.5 }]}
+            >
+              <Ionicons name="chevron-back" size={20} color={theme.primaryDark} />
+            </Pressable>
+            <View style={styles.yearLabelBox}>
+              <Text style={[styles.yearLabel, { color: theme.text }]}>{yearCursor}</Text>
+              {!isOnTodayYear && (
+                <Pressable
+                  onPress={() => setYearCursor(todayYear)}
+                  hitSlop={6}
+                  style={({ pressed }) => [
+                    styles.yearTodayPill,
+                    { backgroundColor: theme.primarySoft },
+                    pressed && { opacity: 0.55 },
+                  ]}
+                >
+                  <Text style={[styles.yearTodayText, { color: theme.primaryDark }]}>
+                    {t('today', { defaultValue: "Aujourd'hui" })}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+            <Pressable
+              onPress={() => setYearCursor(y => y + 1)}
+              hitSlop={8}
+              style={({ pressed }) => [styles.yearArrow, pressed && { opacity: 0.5 }]}
+            >
+              <Ionicons name="chevron-forward" size={20} color={theme.primaryDark} />
+            </Pressable>
+          </View>
+        )}
 
         {insertDate ? (
           <View style={[styles.grid, { gap }]}>
@@ -207,6 +260,32 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
   legendText: { fontSize: fontSize.xs, color: colors.textSecondary, fontWeight: fontWeight.medium },
+
+  yearBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.md,
+    ...shadows.soft,
+  },
+  yearArrow: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+  },
+  yearLabelBox: { flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: spacing.sm },
+  yearLabel: { fontSize: fontSize.lg, fontWeight: fontWeight.black, letterSpacing: -0.3 },
+  yearTodayPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+  },
+  yearTodayText: { fontSize: 11, fontWeight: fontWeight.bold, letterSpacing: 0.3 },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
 

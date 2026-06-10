@@ -1,83 +1,45 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, Pressable, useWindowDimensions, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp, FadeIn, SlideInRight } from 'react-native-reanimated';
-import { addDays, isSameDay, startOfDay } from 'date-fns';
-import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '../src/theme';
+import { colors } from '../src/theme';
 import { CycleRing } from '../src/components/CycleRing';
-import { PeriodDayCell } from '../src/components/PeriodDayCell';
-import { PeriodLogModal } from '../src/components/PeriodLogModal';
+// Period tracking moved to its dedicated drawer tab "Mes périodes"
+// in v2.6.1 — those components are no longer consumed from the home
+// screen. Kept under src/components/ since the dedicated tab uses them.
 import { ActionButton } from '../src/components/ActionButton';
 import { ConfirmActionModal } from '../src/components/ConfirmActionModal';
+import { useConfirm } from '../src/components/ConfirmProvider';
+import { Ionicons } from '@expo/vector-icons';
 import { Onboarding } from '../src/components/Onboarding';
 import { TempRemovalCountdown } from '../src/components/TempRemovalCountdown';
 import { WithdrawalGauge } from '../src/components/WithdrawalGauge';
 import {
-  getCycleInfoFromLogs, formatDateFr, formatDateTimeFr,
+  getCycleInfoFromLogs, formatDateTimeFr,
   RING_IN_DAYS, RING_OUT_DAYS,
 } from '../src/utils/cycle';
 import { useCycleStore } from '../src/store/cycleStore';
 import { useTheme } from '../src/theme/useTheme';
 import { useTranslation } from 'react-i18next';
 import { useIsRTL } from '../src/i18n/useIsRTL';
-
-// Time-based greeting
-function getGreetingKey(): string {
-  const h = new Date().getHours();
-  if (h >= 5 && h < 12) return 'greetingMorning';
-  if (h >= 12 && h < 18) return 'greetingAfternoon';
-  if (h >= 18 && h < 21) return 'greetingEvening';
-  return 'greetingNight';
-}
-
-// Greeting icon per time of day. All four slots share a consistent painterly
-// style, tightly framed and uniformly sized.
-//   - Morning (5h–12h): Matin.png    (sparrow on a branch, sunrise)
-//   - Afternoon (12h–18h): ApresMidi.png (sun through clouds)
-//   - Evening (18h–21h): Soir.png   (setting sun over the ocean)
-//   - Night (21h–5h): Nuit.png      (crescent moon, starry sky)
-type GreetingIconKey = 'morning' | 'sun' | 'sunset' | 'night';
-// Module-scope `require()` registry — Metro resolves each path once, at bundle
-// time, and dedupes. Keeping these at the top level (vs. a conditional
-// `require()` inside an IIFE) has proved more reliable on Android release
-// builds where asset resolution inside deeply-nested render functions
-// occasionally misses the static analysis pass.
-const GREETING_ICON_SRCS: Record<GreetingIconKey, number> = {
-  morning: require('../assets/icones/Matin.png'),
-  sun: require('../assets/icones/ApresMidi.png'),
-  sunset: require('../assets/icones/Soir.png'),
-  night: require('../assets/icones/Nuit.png'),
-};
-function getGreetingIconKey(): GreetingIconKey {
-  const h = new Date().getHours();
-  if (h >= 5 && h < 12) return 'morning';
-  if (h >= 12 && h < 18) return 'sun';
-  if (h >= 18 && h < 21) return 'sunset';
-  return 'night';
-}
-
-// Pet next to the greeting — awake variant in daytime, sleeping variant after 18h.
-// Night adds a tiny zzz so the rest state is unambiguous.
-type PetState = 'none' | 'awake' | 'evening' | 'night';
-function getPetState(): PetState {
-  const h = new Date().getHours();
-  if (h >= 5 && h < 18) return 'awake';
-  if (h >= 18 && h < 21) return 'evening';
-  return 'night'; // 21h–5h
-}
+// Greeting header (pet bird + greeting text + time-of-day icon + date phrase)
+// and its module-scope time-of-day helpers were extracted out of this file.
+import { GreetingHeader } from '../src/components/home/GreetingHeader';
+import { styles } from './index.styles';
 
 export default function MyCycleScreen() {
   const {
-    firstInsertDate, ringStatus, cycleLogs, periodLogs,
+    firstInsertDate, ringStatus, cycleLogs,
     insertRing, removeRing, resetAll, userName, darkMode, startTempRemoval,
-    addPeriodLog, updatePeriodLog, deletePeriodLog, debugIconOverride,
+    // (the greeting-icon debug override was removed in v2.6.5)
   } = useCycleStore();
   const { width } = useWindowDimensions();
   const [confirmAction, setConfirmAction] = useState<'insert' | 'remove' | null>(null);
-  const [selectedPeriodDate, setSelectedPeriodDate] = useState<Date | null>(null);
+  // (selectedPeriodDate state removed alongside pauseDays grid in v2.6.1)
   const { t } = useTranslation();
   const isRTL = useIsRTL();
   const theme = useTheme();
+  const confirm = useConfirm();
 
   const info = useMemo(
     () => firstInsertDate
@@ -87,31 +49,31 @@ export default function MyCycleScreen() {
   );
 
   const isRingIn = ringStatus === 'in';
-  const cycleStartKey = info?.ringInsertDate?.toISOString() ?? '';
 
-  const pauseDays = useMemo(() => {
-    if (!info) return [];
-    const cycleStart = info.ringInsertDate;
-    const today = startOfDay(new Date());
-    return Array.from({ length: RING_OUT_DAYS }).map((_, i) => {
-      const date = addDays(cycleStart, RING_IN_DAYS + i);
-      const periodLog = periodLogs.find(p =>
-        isSameDay(startOfDay(new Date(p.startDate)), startOfDay(date))
-      );
-      return {
-        dayNumber: RING_IN_DAYS + i + 1,
-        date,
-        isToday: isSameDay(date, today),
-        intensity: periodLog?.intensity,
-        logId: periodLog?.id,
-      };
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cycleStartKey, periodLogs]);
+  // The "awaiting re-insertion" state — the 7-day pause is OVER but the
+  // user hasn't yet logged a new insert. We render a scaffold (inactive)
+  // 21-day ring instead of the rose-overdue full ring, so the upcoming
+  // cycle is visibly present but inert until the user confirms insertion.
+  // Activation is simply: pressing "J'ai mis l'anneau" → insertRing() →
+  // new insert log → cycleStart resets → currentDay flips to 1 → the
+  // same component re-renders fully animated on the next frame.
+  const isAwaitingReinsertion = !!info && info.isOverdue && info.nextAction === 'insert' && !isRingIn;
 
-  const selectedPeriodInfo = selectedPeriodDate
-    ? pauseDays.find(d => isSameDay(d.date, selectedPeriodDate))
-    : null;
+  // Phase key on the ring's wrapper so each transition (ring-in → pause →
+  // awaiting → new ring-in) remounts the Animated.View, replaying its
+  // FadeIn entering animation. That gives the user the "a new gauge has
+  // appeared" feel they asked for, instead of the same circle silently
+  // morphing colors in place.
+  const ringPhaseKey = isAwaitingReinsertion
+    ? 'awaiting'
+    : isRingIn
+      ? 'ring-in'
+      : 'ring-out';
+
+  // Period tracking moved to the dedicated "Mes périodes" drawer tab
+  // in v2.6.1 — pauseDays / selectedPeriodInfo / handlePeriodSelect /
+  // handlePeriodRemove / setSelectedPeriodDate were all removed
+  // alongside the home-screen "Suivi des règles" grid.
 
   // Show onboarding if no insert date (covers new users + reset users)
   if (!firstInsertDate || !info) {
@@ -134,30 +96,19 @@ export default function MyCycleScreen() {
     setConfirmAction(null);
   };
 
-  const handlePeriodSelect = (intensity: 'light' | 'normal' | 'heavy') => {
-    if (!selectedPeriodDate) return;
-    if (selectedPeriodInfo?.logId) {
-      updatePeriodLog(selectedPeriodInfo.logId, { intensity });
-    } else {
-      addPeriodLog({ startDate: selectedPeriodDate.toISOString(), intensity });
+  // handlePeriodSelect / handlePeriodRemove removed in v2.6.1 — see
+  // "Mes périodes" drawer tab for the new guided flow.
+
+  const handleReset = async () => {
+    if (await confirm({
+      title: t('resetTitle'),
+      body: t('resetMessage'),
+      confirmLabel: t('restart'),
+      destructive: true,
+      emoji: '🔄',
+    })) {
+      resetAll();
     }
-    setSelectedPeriodDate(null);
-  };
-
-  const handlePeriodRemove = () => {
-    if (selectedPeriodInfo?.logId) deletePeriodLog(selectedPeriodInfo.logId);
-    setSelectedPeriodDate(null);
-  };
-
-  const handleReset = () => {
-    Alert.alert(
-      t('resetTitle'),
-      t('resetMessage'),
-      [
-        { text: t('cancel'), style: 'cancel' },
-        { text: t('restart'), style: 'destructive', onPress: resetAll },
-      ]
-    );
   };
 
   return (
@@ -167,187 +118,32 @@ export default function MyCycleScreen() {
         <Animated.View entering={FadeInDown.duration(700).springify()} style={styles.header}>
           <View style={styles.headerTop}>
             <View style={{ flex: 1 }}>
-              <View
-                style={[
-                  styles.greetingRow,
-                  isRTL && styles.rtlRow,
-                  // Slight pull toward the screen edge so the greeting text
-                  // visually aligns with the date line below it, instead of
-                  // being pushed right by the full width of the bird. The
-                  // bird still sits inside the safe padding of the ScrollView.
-                  isRTL ? { marginRight: -8 } : { marginLeft: -8 },
-                ]}
-              >
-                {(() => {
-                  // Derive the pet state from the debug icon override when
-                  // it's set so the dropdown in the header forces the bird
-                  // + ZZZ to the matching state (otherwise they'd keep
-                  // reading the real clock and ignore the picker).
-                  // Mapping: morning/sun → awake · sunset → evening · night → night
-                  const overridePet: PetState | null =
-                    debugIconOverride === 'morning' || debugIconOverride === 'sun'
-                      ? 'awake'
-                      : debugIconOverride === 'sunset'
-                        ? 'evening'
-                        : debugIconOverride === 'night'
-                          ? 'night'
-                          : null;
-                  const petState = overridePet ?? getPetState();
-                  if (petState === 'none') return null;
-                  const isAwake = petState === 'awake';
-                  // ZZZ is shown ONLY in the night slot (21h–5h). During the
-                  // evening slot (18h–21h) the bird already sleeps but stays
-                  // "quiet" — no Z's yet — matching the user's mental model
-                  // of "dodo profond seulement la nuit".
-                  const isNight = petState === 'night';
-                  // Natural artwork faces right. In LTR the awake bird sits
-                  // on the LEFT of the greeting and already points at the
-                  // text (no flip). The sleeping bird is mirrored for
-                  // aesthetic reasons (user preference). In RTL, row-reverse
-                  // swaps the bird to the RIGHT of the text, so each of the
-                  // two flip decisions inverts — keeping the bird always
-                  // facing the greeting in the awake state, and always
-                  // facing away in the sleeping state, regardless of
-                  // language direction.
-                  const flipBird = isAwake ? isRTL : !isRTL;
-                  return (
-                    <View style={styles.petWrap}>
-                      <Image
-                        source={
-                          isAwake
-                            ? require('../assets/OrringBluePetNoBgSalute.png')
-                            : require('../assets/OrringBluePetSleepingNoBg.png')
-                        }
-                        style={[
-                          styles.petBird,
-                          flipBird && { transform: [{ scaleX: -1 }] },
-                        ]}
-                        resizeMode="contain"
-                      />
-                      {/* ZZZ affiché UNIQUEMENT la nuit (21h-5h), pas le soir.
-                          Position : juste à CÔTÉ (pas au-dessus) de la tête du
-                          piaf — à droite en LTR, à gauche en arabe. Le PNG
-                          ZZZNoBg.png est déjà orienté lisible donc aucun
-                          transform n'est appliqué. */}
-                      {isNight && (
-                        <Image
-                          source={require('../assets/ZZZNoBg.png')}
-                          style={[
-                            styles.petZzz,
-                            // Arabe (RTL) : miroir horizontal de la position
-                            // LTR — ZZZ côté gauche du wrapper, toujours sans
-                            // flip pour garder les Z lisibles.
-                            isRTL
-                              ? { left: -18, right: undefined }
-                              : null,
-                          ]}
-                          resizeMode="contain"
-                        />
-                      )}
-                    </View>
-                  );
-                })()}
-                <Text
-                  // Keep everything on a single line so the grouping
-                  // [bird][text][icon] never wraps and the time-of-day icon
-                  // stays right next to the text. In languages where the
-                  // greeting + name is long (notably Arabic: "مساء الخير,
-                  // Alex"), instead of truncating with "…" we let the text
-                  // auto-shrink down to 60% of its size. That way the whole
-                  // name is always readable and the icon still sits snug
-                  // against the text.
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.6}
-                  style={[
-                    styles.greeting,
-                    { color: theme.primaryDark },
-                    // In RTL the row is reversed, so the bird lives on the
-                    // right visually. Right-aligning the text keeps it hugging
-                    // the bird instead of drifting to the far-left edge and
-                    // crowding the TempRemovalCountdown on the right.
-                    isRTL && { textAlign: 'right' },
-                  ]}
-                >
-                  {t(getGreetingKey())}{userName ? `, ${userName}` : ''}
-                </Text>
-                {(() => {
-                  // Unified icon set — all four time-of-day glyphs now share
-                  // the same square framing & roughly equal weight.
-                  //   Matin / ApresMidi / Soir / Nuit
-                  // A debug override (set from the drawer header on this
-                  // screen) lets us preview any slot without waiting for the
-                  // clock. When the override is `null` we fall back to the
-                  // time-based resolver. The PNG registry lives at module
-                  // scope (GREETING_ICON_SRCS) so Metro always statically
-                  // resolves each asset.
-                  const resolved: GreetingIconKey =
-                    (debugIconOverride as GreetingIconKey | null) ?? getGreetingIconKey();
-                  const src = GREETING_ICON_SRCS[resolved];
-                  // The latest Nuit.png is tightly framed (moon + night sky
-                  // reach every edge of the canvas, ~100% fill) — the other
-                  // three PNGs only fill ~85% of their canvas. So at an equal
-                  // bounding box, Nuit would render VISUALLY LARGER than its
-                  // siblings. Shrink it slightly so every greeting icon looks
-                  // the same visible size.
-                  const isNight = resolved === 'night';
-                  const sizeFix = isNight ? { width: 38, height: 38 } : null;
-                  // Nuit.png glyph sits a hair higher than the other greeting
-                  // icons (tighter top-crop). A small marginTop drops it a few
-                  // pixels into visual alignment with the text baseline.
-                  const nightAlignFix = isNight ? { marginTop: 4 } : null;
-                  // In Arabic the "ZZZ" puff on Nuit.png reads in the wrong
-                  // direction relative to the RTL script flow. Mirror it on
-                  // the X axis so the Z's drift outward like in LTR.
-                  const rtlNightFlip =
-                    isNight && isRTL ? { transform: [{ scaleX: -1 as const }] } : null;
-                  // Nuit.png has a slightly tighter left-crop than the other
-                  // three glyphs, so even at marginLeft: 0 it still reads as
-                  // glued to the greeting text. A 3px nudge restores the
-                  // visual breathing room in LTR only (RTL stays untouched).
-                  const nightExtraGapLTR =
-                    isNight && !isRTL ? { marginLeft: 3 } : null;
-                  return (
-                    <Image
-                      source={src}
-                      style={[
-                        styles.greetingIconImg,
-                        sizeFix,
-                        // Icon spacing relative to the greeting text.
-                        // • RTL: keep the tight tuck (-10) — Arabic glyph
-                        //   metrics leave plenty of natural air on the row.
-                        // • LTR: push the icon ~10px to the right of the
-                        //   text so it doesn't feel glued to the name.
-                        isRTL ? { marginRight: -10 } : { marginLeft: 0 },
-                        nightExtraGapLTR,
-                        nightAlignFix,
-                        rtlNightFlip,
-                      ]}
-                      resizeMode="contain"
-                    />
-                  );
-                })()}
-              </View>
-              <Text style={[styles.date, { color: theme.textSecondary }, isRTL && styles.rtlText]}>
-                {formatDateFr(new Date(), 'EEEE dd MMMM')}
-              </Text>
-              <Text style={[styles.since, { color: theme.textLight }, isRTL && styles.rtlText]}>
-                {t('since', { date: formatDateFr(info.ringInsertDate, 'dd MMMM') })}
-              </Text>
+              <GreetingHeader info={info} userName={userName} isRTL={isRTL} theme={theme} t={t} />
             </View>
             <TempRemovalCountdown />
           </View>
         </Animated.View>
 
-        {/* Big cycle ring */}
-        <Animated.View entering={FadeIn.delay(300).duration(1000)} style={styles.ringWrapper}>
+        {/* Big cycle ring.
+            `key` swap triggers a fresh FadeIn each time the phase flips,
+            so the user reads "a new gauge appears" rather than "the same
+            ring changed colors". When awaiting re-insertion (post-pause,
+            no new insert log yet) we preview the upcoming 21-day cycle
+            in INACTIVE mode — visible scaffold, no fill, dim center
+            label inviting the user to press "J'ai mis l'anneau". */}
+        <Animated.View
+          key={ringPhaseKey}
+          entering={FadeIn.delay(isAwaitingReinsertion ? 0 : 300).duration(900)}
+          style={styles.ringWrapper}
+        >
           <CycleRing
             currentDay={info.currentDay}
             size={ringSize}
-            isRingIn={isRingIn}
+            isRingIn={isAwaitingReinsertion ? true : isRingIn}
             phaseLabel={isRingIn ? t('ringInPlace') : t('pause')}
             daysLeft={info.daysUntilChange}
             nextAction={nextActionLabel}
+            inactive={isAwaitingReinsertion}
           />
         </Animated.View>
 
@@ -377,8 +173,11 @@ export default function MyCycleScreen() {
 
         {/* Withdrawal-period gauge — affichée UNIQUEMENT pendant la pause (ring-out).
             Contextualise visuellement les 7 jours d'attente avant la prochaine
-            insertion (marqueur glissant, countdown, pulse). */}
-        {!isRingIn && (
+            insertion (marqueur glissant, countdown, pulse).
+            Masquée en awaiting-reinsertion : la pause est techniquement
+            terminée et la grosse jauge inactive 21 j prend le relais comme
+            seul rappel à l'écran. */}
+        {!isRingIn && !isAwaitingReinsertion && (
           <Animated.View entering={FadeInUp.delay(550).duration(500).springify()}>
             <WithdrawalGauge
               dayInPause={Math.max(1, info.currentDay - RING_IN_DAYS)}
@@ -391,9 +190,18 @@ export default function MyCycleScreen() {
         {/* Action button — main interaction */}
         <Animated.View entering={FadeInUp.delay(600).duration(600).springify()}>
           <View style={styles.actionRow}>
+            {/* v2.6.5: replaced PNG / emoji with Ionicons vector
+                glyphs — clean line-art that matches the drawer set
+                and adapts to dark/light via the `color` prop. */}
             {isRingIn ? (
               <ActionButton
-                icon="♻️"
+                icon={
+                  <Ionicons
+                    name="remove-circle-outline"
+                    size={42}
+                    color={darkMode ? theme.primary : theme.primaryDark}
+                  />
+                }
                 label={t('removedRing')}
                 color={darkMode ? theme.primary : theme.primaryDark}
                 bgColor={darkMode ? 'rgba(181,165,226,0.18)' : theme.primarySoft}
@@ -401,7 +209,13 @@ export default function MyCycleScreen() {
               />
             ) : (
               <ActionButton
-                icon="⭕"
+                icon={
+                  <Ionicons
+                    name="add-circle-outline"
+                    size={42}
+                    color={darkMode ? theme.primary : theme.primaryDark}
+                  />
+                }
                 label={t('insertedRing')}
                 color={darkMode ? theme.primary : theme.primaryDark}
                 bgColor={darkMode ? 'rgba(181,165,226,0.18)' : theme.primarySoft}
@@ -439,31 +253,13 @@ export default function MyCycleScreen() {
           )}
         </Animated.View>
 
-        {/* Period tracking */}
-        <Animated.View entering={FadeInUp.delay(1000).duration(600).springify()} style={[styles.periodCard, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }, isRTL && styles.rtlText]}>{t('periodTracking')}</Text>
-          <Text style={[styles.sectionSub, { color: theme.textSecondary }, isRTL && styles.rtlText]}>
-            {t('periodTrackingSub')}
-          </Text>
-          <View style={[styles.periodGrid, isRTL && styles.rtlRow]}>
-            {pauseDays.map((day, i) => (
-              <Animated.View key={day.dayNumber} entering={FadeInUp.delay(1100 + i * 60).duration(400).springify()}>
-                <PeriodDayCell
-                  dayNumber={day.dayNumber}
-                  date={day.date}
-                  intensity={day.intensity}
-                  isToday={day.isToday}
-                  onPress={() => setSelectedPeriodDate(day.date)}
-                />
-              </Animated.View>
-            ))}
-          </View>
-          <View style={[styles.periodLegend, { borderTopColor: theme.border }]}>
-            <LegendDot color="#FCDCE6" label={t('light')} textColor={theme.textSecondary} />
-            <LegendDot color="#F4A0A0" label={t('normal')} textColor={theme.textSecondary} />
-            <LegendDot color="#E87070" label={t('heavy')} textColor={theme.textSecondary} />
-          </View>
-        </Animated.View>
+        {/* "Suivi des règles" supprimé en v2.6.1 — l'onglet "Mes périodes"
+            (drawer) couvre maintenant le suivi de manière complète et
+            intuitive : calendrier dédié, prédiction, rappels, intensité
+            par jour. Garder la grille 7-jours ici doublonnait l'UX et
+            posait un problème de cohérence (logs créés ici étaient des
+            single-day, ceux de la nouvelle section sont des périodes
+            multi-jours guidées). */}
 
         {/* Reset link */}
         <Animated.View entering={FadeIn.delay(1200).duration(400)}>
@@ -478,142 +274,17 @@ export default function MyCycleScreen() {
       <ConfirmActionModal
         visible={!!confirmAction}
         action={confirmAction || 'insert'}
-        isEarly={confirmAction === 'remove' && info.currentDay < 21}
+        isEarly={confirmAction === 'remove' && info.currentDay < 22}
         onConfirm={handleConfirmAction}
         onClose={() => setConfirmAction(null)}
       />
 
-      <PeriodLogModal
-        visible={!!selectedPeriodDate}
-        date={selectedPeriodDate}
-        currentIntensity={selectedPeriodInfo?.intensity}
-        onSelect={handlePeriodSelect}
-        onRemove={handlePeriodRemove}
-        onClose={() => setSelectedPeriodDate(null)}
-      />
     </SafeAreaView>
   );
 }
 
-function LegendDot({ color, label, textColor }: { color: string; label: string; textColor?: string }) {
-  return (
-    <View style={styles.legendItem}>
-      <View style={[styles.legendDot, { backgroundColor: color }]} />
-      <Text style={[styles.legendText, textColor ? { color: textColor } : undefined]}>{label}</Text>
-    </View>
-  );
-}
+// LegendDot helper removed in v2.6.1 — only consumer was the home-screen
+// "Suivi des règles" section, itself removed. The "Mes périodes" tab has
+// its own LegendDot inside app/periods.tsx.
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
-  container: { flex: 1 },
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, paddingTop: spacing.md },
-
-  header: { marginBottom: spacing.sm },
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  greeting: { fontSize: fontSize.xxl, fontWeight: fontWeight.black, letterSpacing: -0.5, flexShrink: 1 },
-  // No flexWrap — when the greeting is too long (e.g. "مساء الخير, Alex 🌇")
-  // we'd rather let flexShrink trim it than have a wrapped second line appear
-  // at the far left and collide with the TempRemovalCountdown on the right.
-  // gap 0 — we use explicit negative margins on the icon instead, and we want
-  // the greeting text to sit right next to the bird in LTR (user preference).
-  // overflow:'visible' is critical — the ZZZ image inside petWrap sits at
-  // right:-30 (beside the bird's head, past the 46px wrapper's right edge).
-  // Android clips overflow by default even when the child has
-  // overflow:'visible', so we also mark the containing row visible to keep
-  // the absolutely-positioned ZZZ from being cut off.
-  greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 0, overflow: 'visible' },
-  // Applied on top of greetingRow / titleRow when the active language is RTL
-  // so that bird + emoji land on the mirrored side of the greeting.
-  rtlRow: { flexDirection: 'row-reverse' },
-  rtlText: { textAlign: 'right', writingDirection: 'rtl' },
-  petWrap: {
-    width: 46,
-    height: 46,
-    position: 'relative',
-    overflow: 'visible',
-  },
-  petBird: {
-    width: 44,
-    height: 44,
-  },
-  petZzz: {
-    position: 'absolute',
-    // Placed BESIDE the bird's head, not above it. After flipBird in LTR
-    // sleeping mode the head sits on the right half of the 46×46 wrapper,
-    // so we push the ZZZ well past the right edge (right:-30) and only
-    // slightly up (top:-8) — that puts the ZZZ level with the head, just
-    // to its right. Size kept at 44 (down from 56) so it doesn't sprawl
-    // over the greeting text next to the bird.
-    top: -14,
-    right: -18,
-    width: 44,
-    height: 44,
-    // Raise above the sibling <Text> that paints the greeting line.
-    // On Android the Text can cover absolutely-positioned siblings that
-    // overflow into its area; elevation forces the ZZZ on top in the
-    // native z-order. zIndex alone isn't always enough on Android.
-    zIndex: 20,
-    elevation: 20,
-  },
-  // Matches the visual weight of the adjacent emoji in the other time-of-day
-  // variants. Rendered as a sibling of the greeting <Text>, not inline.
-  // Shared by all four greeting icons (Matin / ApresMidi / Soir / Nuit).
-  // Bumped from 32 → 44 now that every PNG is tightly framed and equal-size —
-  // "a touch bigger so we can clearly see them, but not so large they steal
-  // focus from the greeting text".
-  greetingIconImg: { width: 44, height: 44 },
-  date: { fontSize: fontSize.md, marginTop: 2, textTransform: 'capitalize' },
-  since: { fontSize: fontSize.sm, marginTop: 2, textTransform: 'capitalize' },
-
-  ringWrapper: { marginVertical: spacing.lg, alignItems: 'center' },
-
-  pillsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  pill: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 12, borderRadius: borderRadius.full, gap: 6,
-  },
-  pillEmoji: { fontSize: 16 },
-  pillIcon: { marginRight: 2 },
-  pillText: { fontSize: fontSize.sm, fontWeight: fontWeight.bold },
-
-  actionRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
-
-  explainCard: {
-    borderRadius: borderRadius.xl, padding: spacing.lg,
-    ...shadows.medium, marginBottom: spacing.lg,
-  },
-  explainTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, marginBottom: 6 },
-  explainBody: { fontSize: fontSize.md, lineHeight: 24 },
-  dateDetail: { fontSize: fontSize.sm, textTransform: 'capitalize', flexShrink: 1 },
-  dateDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 6,
-  },
-
-  periodCard: {
-    borderRadius: borderRadius.xl, padding: spacing.lg,
-    ...shadows.medium,
-  },
-  sectionTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold },
-  sectionSub: { fontSize: fontSize.sm, marginTop: 2, marginBottom: spacing.md },
-  periodGrid: { flexDirection: 'row', gap: spacing.xs, justifyContent: 'space-between' },
-
-  periodLegend: {
-    flexDirection: 'row', justifyContent: 'center', gap: spacing.lg,
-    marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: 1,
-  },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendDot: { width: 10, height: 10, borderRadius: 5 },
-  legendText: { fontSize: fontSize.xs },
-
-  resetBtn: { alignItems: 'center', paddingVertical: spacing.md },
-  resetText: { fontSize: fontSize.sm },
-});
+// Styles moved to ./index.styles (imported above as `styles`).

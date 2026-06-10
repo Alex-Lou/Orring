@@ -4,7 +4,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useTheme } from '../theme/useTheme';
 import { useCycleStore } from '../store/cycleStore';
 import { useTranslation } from 'react-i18next';
-import { spacing, fontSize, fontWeight, borderRadius } from '../theme';
+import { fontSize, fontWeight } from '../theme';
 
 const DURATION_MS = 3 * 60 * 60 * 1000; // 3h
 

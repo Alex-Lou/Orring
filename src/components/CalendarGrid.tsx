@@ -1,15 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { addMonths, subMonths, format, getDay, startOfMonth } from 'date-fns';
-import { fr, enUS, es, pt, de, ar, zhCN, ja } from 'date-fns/locale';
+import { getDateFnsLocale } from '../i18n/dateLocales';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '../theme';
 import { getMonthDaysWithPeriods, CycleDay } from '../utils/cycle';
 import { DayCell } from './DayCell';
 import { useTheme } from '../theme/useTheme';
 import { useTranslation } from 'react-i18next';
 
-const DATE_LOCALES: Record<string, any> = { fr, en: enUS, es, pt, de, ar, zh: zhCN, ja };
 const WEEKDAYS_KEYS = ['weekdayMon', 'weekdayTue', 'weekdayWed', 'weekdayThu', 'weekdayFri', 'weekdaySat', 'weekdaySun'] as const;
 const COLS = 7;
 
@@ -21,7 +20,7 @@ interface CalendarGridProps {
 export function CalendarGrid({ firstInsertDate, onDayPress }: CalendarGridProps) {
   const { t, i18n } = useTranslation();
   const theme = useTheme();
-  const locale = DATE_LOCALES[i18n.language] || fr;
+  const locale = getDateFnsLocale(i18n.language);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const year = currentMonth.getFullYear();

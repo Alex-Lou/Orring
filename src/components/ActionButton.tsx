@@ -2,7 +2,7 @@ import React from 'react';
 import { Text, StyleSheet, Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '../theme';
+import { spacing, fontSize, fontWeight, borderRadius, shadows } from '../theme';
 
 // `icon` accepte indifféremment une string emoji (ex: "♻️") ou un
 // ReactNode (ex: <MetierIcon name="ring" size={40} />). Les strings sont

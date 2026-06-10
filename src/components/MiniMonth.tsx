@@ -2,13 +2,13 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import { getDay, startOfMonth, format } from 'date-fns';
-import { fr, enUS, es, pt, de, ar, zhCN, ja } from 'date-fns/locale';
+import { getDateFnsLocale } from '../i18n/dateLocales';
+import { dateKey } from '../utils/dateKey';
 import { colors, spacing, fontWeight, borderRadius, shadows } from '../theme';
 import { CycleDay, DayStatus, getStatusLabel } from '../utils/cycle';
 import { useTheme } from '../theme/useTheme';
 import { useTranslation } from 'react-i18next';
 
-const DATE_LOCALES: Record<string, any> = { fr, en: enUS, es, pt, de, ar, zh: zhCN, ja };
 
 interface MiniMonthProps {
   year: number;
@@ -38,17 +38,13 @@ function getCellStyle(status: DayStatus, hasPeriod: boolean) {
   return STATUS_COLORS[status] || STATUS_COLORS.none;
 }
 
-function toDateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 export const MiniMonth = React.memo(function MiniMonth({
   year, month, days, onDayPress, onMonthPress, index, isCurrentMonth, noteDates = new Set<string>(),
 }: MiniMonthProps) {
   const [tooltip, setTooltip] = useState<{ text: string; index: number } | null>(null);
   const theme = useTheme();
   const { t, i18n } = useTranslation();
-  const locale = DATE_LOCALES[i18n.language] || fr;
+  const locale = getDateFnsLocale(i18n.language);
   const monthDate = new Date(year, month, 1);
   const monthLabel = format(monthDate, 'MMMM', { locale });
   const yearLabel = format(monthDate, 'yyyy');
@@ -106,7 +102,7 @@ export const MiniMonth = React.memo(function MiniMonth({
 
               const globalIdx = ri * COLS + ci - startPadding;
               const { bg, text } = getCellStyle(cell.status, !!cell.periodIntensity);
-              const hasNote = noteDates.has(toDateKey(cell.date));
+              const hasNote = noteDates.has(dateKey(cell.date));
               const isAction = cell.status === 'insert_day' || cell.status === 'remove_day';
               const showTooltip = tooltip?.index === globalIdx;
 

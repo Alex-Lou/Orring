@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../theme';
+import { colors, fontSize, fontWeight } from '../theme';
 import { RING_IN_DAYS, RING_OUT_DAYS, CYCLE_LENGTH } from '../utils/cycle';
 
 interface CyclePhaseBarProps {

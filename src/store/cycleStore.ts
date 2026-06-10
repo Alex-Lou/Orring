@@ -1,97 +1,41 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { scheduleRingNotifications, cancelAllNotifications, scheduleTempRemovalNotif, cancelTempRemovalNotif } from '../utils/notifications';
+import {
+  scheduleRingNotifications,
+  cancelAllNotifications,
+  scheduleTempRemovalNotif,
+  cancelTempRemovalNotif,
+  schedulePeriodNotifications,
+  cancelPeriodNotifications,
+  scheduleOpenPeriodReminder,
+} from '../utils/notifications';
+import { getPeriodStats, findOpenPeriod, getLastCoveredDay } from '../utils/periods';
+import { dateKey } from '../utils/dateKey';
+import type { BackupPayload } from '../utils/backup';
+import type {
+  CycleData,
+  CycleActions,
+  CycleState,
+  CycleLog,
+  PeriodLog,
+  RingStatus,
+  DayMark,
+  DayNote,
+} from './cycleStore.types';
 
-// ─── Types ───
-
-export interface CycleLog {
-  id: string;
-  date: string;
-  action: 'insert' | 'remove';
-  notes?: string;
-}
-
-export interface PeriodLog {
-  id: string;
-  startDate: string;
-  endDate?: string;
-  intensity: 'light' | 'normal' | 'heavy';
-}
-
-export type RingStatus = 'in' | 'out';
-
-export type DayMark = '💧' | '❤️' | '😊' | '😩' | '💊' | '🏥' | '⭐' | '🔥';
-
-export interface DayNote {
-  id: string;
-  dateKey: string;
-  text: string;
-  marks: DayMark[];
-}
-
-// ─── State shape (data only, no actions — keeps persist clean) ───
-
-interface CycleData {
-  firstInsertDate: string | null;
-  ringStatus: RingStatus;
-  cycleLogs: CycleLog[];
-  periodLogs: PeriodLog[];
-  dayNotes: DayNote[];
-  notificationsEnabled: boolean;
-  reminderHour: number;
-  reminderMinute: number;
-  darkMode: boolean;
-  language: string;
-  userName: string | null;
-  hasOnboarded: boolean;
-  // Timer retrait temporaire (<3h)
-  tempRemovalStart: string | null; // ISO timestamp
-  tempRemovalNotify: boolean;      // notif à +3h activée ou non
-  // DEBUG: force a specific greeting icon for testing. `null` = auto (by
-  // current time). Intentionally excluded from the persist partialize so it
-  // resets to null on every app boot.
-  debugIconOverride: 'morning' | 'sun' | 'sunset' | 'night' | null;
-}
-
-interface CycleActions {
-  setFirstInsertDate: (date: string) => void;
-  insertRing: (date?: string) => void;
-  removeRing: (date?: string) => void;
-  addPeriodLog: (log: Omit<PeriodLog, 'id'>) => void;
-  updatePeriodLog: (id: string, updates: Partial<PeriodLog>) => void;
-  deletePeriodLog: (id: string) => void;
-  setRingStatus: (status: RingStatus) => void;
-  saveDayNote: (dateKey: string, text: string, marks: DayMark[]) => void;
-  deleteDayNote: (dateKey: string) => void;
-  getDayNote: (dateKey: string) => DayNote | undefined;
-  setNotificationsEnabled: (enabled: boolean) => void;
-  setReminderTime: (hour: number, minute: number) => void;
-  toggleDarkMode: () => void;
-  setDarkMode: (v: boolean) => void;
-  setLanguage: (lang: string) => void;
-  setUserName: (name: string | null) => void;
-  completeOnboarding: () => void;
-  startTempRemoval: (notify: boolean) => void;
-  cancelTempRemoval: () => void;
-  setTempRemovalNotify: (v: boolean) => void;
-  setDebugIconOverride: (v: CycleData['debugIconOverride']) => void;
-  /**
-   * Reschedules J-7 / J-1 / J notifications from the latest `insert` log,
-   * using the store's current reminder hour/minute. Safe to call anytime —
-   * no-op when notifications are disabled or no insert has ever occurred.
-   * Called on app boot to recover from rescheduling gaps (e.g. user denied
-   * then later granted permission, or OS dropped queued notifs).
-   */
-  rescheduleNotifications: () => void;
-  clearHistory: () => void;
-  deleteCycleLog: (id: string) => void;
-  deleteCycleLogsBetween: (startMs: number, endMs: number) => void;
-  resetAll: () => void;
-  _hasHydrated: boolean;
-}
-
-type CycleState = CycleData & CycleActions;
+// Re-export the types so external consumers keep importing them from
+// '../store/cycleStore' (they now live in './cycleStore.types').
+export type {
+  CycleLog,
+  PeriodLog,
+  RingStatus,
+  DayMark,
+  DayNote,
+  CycleData,
+  CycleActions,
+  CycleState,
+} from './cycleStore.types';
 
 // ─── Helpers ───
 
@@ -112,8 +56,22 @@ const INITIAL_DATA: CycleData = {
   hasOnboarded: false,
   tempRemovalStart: null,
   tempRemovalNotify: true,
-  debugIconOverride: null,
 };
+
+// Single source of truth for the persisted slice. `exportData` and
+// `partialize` both derive from it, so adding a persisted field is a
+// one-line change here instead of three hand-synced lists.
+const PERSISTED_KEYS = [
+  'firstInsertDate', 'ringStatus', 'cycleLogs', 'periodLogs', 'dayNotes',
+  'notificationsEnabled', 'reminderHour', 'reminderMinute', 'darkMode',
+  'language', 'userName', 'hasOnboarded', 'tempRemovalStart', 'tempRemovalNotify',
+] as const;
+
+function pickPersisted(state: CycleData): BackupPayload {
+  const out = {} as Record<string, unknown>;
+  for (const k of PERSISTED_KEYS) out[k] = state[k];
+  return out as unknown as BackupPayload;
+}
 
 // ─── Store with persist middleware (AsyncStorage) ───
 
@@ -140,6 +98,38 @@ export const useCycleStore = create<CycleState>()(
           get().reminderHour,
           get().reminderMinute,
         ).catch(() => {});
+      };
+
+      /**
+       * Recomputes the predicted next-period date from `periodLogs` (or
+       * the optional `extraLogs` for not-yet-committed mutations) and
+       * schedules / cancels the J-2 / J0 / J+3 reminders accordingly.
+       *
+       * Called on every period mutation + on boot, so the queue stays in
+       * sync with the latest log without needing the user to re-open the
+       * "Mes périodes" tab.
+       */
+      const reschedulePeriodNotifs = (extraLogs: PeriodLog[] = []) => {
+        if (!get().notificationsEnabled) {
+          cancelPeriodNotifications().catch(() => {});
+          return;
+        }
+        const logs = [...get().periodLogs, ...extraLogs];
+        const stats = getPeriodStats(logs);
+        const hour = get().reminderHour;
+        const minute = get().reminderMinute;
+
+        // Two independent reminder tracks running off the period data:
+        //   1. Prediction trio (J-2 / J0 / J+3) anchored on stats.nextStart
+        //   2. Stale-open-period nudge (lastCovered + 2 days) when the
+        //      user has left a period open without a closing day.
+        // Both share the PERIOD_PREFIX namespace so a "disable
+        // notifications" cleanly nukes them together via cancelByPrefix.
+        schedulePeriodNotifications(stats.nextStart, hour, minute).catch(() => {});
+
+        const openLog = findOpenPeriod(logs);
+        const lastCovered = openLog ? getLastCoveredDay(openLog) : null;
+        scheduleOpenPeriodReminder(lastCovered, hour, minute).catch(() => {});
       };
 
       return ({
@@ -180,15 +170,33 @@ export const useCycleStore = create<CycleState>()(
       },
 
       addPeriodLog: (log) => {
-        set({ periodLogs: [...get().periodLogs, { ...log, id: generateId() }] });
+        // New logs default to OPEN — the guided flow keeps appending
+        // days to this log until the user explicitly closes it. We
+        // also seed `intensities[dateKey(startDate)]` with the chosen
+        // intensity so the start day renders its own color even
+        // before the user adds further per-day entries.
+        const startKey = dateKey(new Date(log.startDate));
+        const newLog: PeriodLog = {
+          closed: false,
+          intensities: { [startKey]: log.intensity },
+          ...log, // caller's explicit fields win — useful for the home
+                  // screen which passes `closed: true` and may pre-fill
+                  // a richer intensities map in the future.
+          id: generateId(),
+        };
+        set({ periodLogs: [...get().periodLogs, newLog] });
+        // Re-derive the next-period prediction with the new log included.
+        reschedulePeriodNotifs([newLog]);
       },
 
       updatePeriodLog: (id, updates) => {
         set({ periodLogs: get().periodLogs.map(l => l.id === id ? { ...l, ...updates } : l) });
+        reschedulePeriodNotifs();
       },
 
       deletePeriodLog: (id) => {
         set({ periodLogs: get().periodLogs.filter(l => l.id !== id) });
+        reschedulePeriodNotifs();
       },
 
       setRingStatus: (status) => set({ ringStatus: status }),
@@ -213,6 +221,7 @@ export const useCycleStore = create<CycleState>()(
           cancelAllNotifications().catch(() => {});
         } else {
           rescheduleFromLastInsert();
+          reschedulePeriodNotifs();
         }
       },
 
@@ -220,10 +229,12 @@ export const useCycleStore = create<CycleState>()(
         set({ reminderHour: hour, reminderMinute: minute });
         // Reschedule with new hour/minute (helper reads them back from state).
         rescheduleFromLastInsert();
+        reschedulePeriodNotifs();
       },
 
       rescheduleNotifications: () => {
         rescheduleFromLastInsert();
+        reschedulePeriodNotifs();
       },
 
       toggleDarkMode: () => set({ darkMode: !get().darkMode }),
@@ -257,8 +268,6 @@ export const useCycleStore = create<CycleState>()(
           cancelTempRemovalNotif().catch(() => {});
         }
       },
-
-      setDebugIconOverride: (v) => set({ debugIconOverride: v }),
 
       clearHistory: () => set({
         cycleLogs: [],
@@ -295,6 +304,37 @@ export const useCycleStore = create<CycleState>()(
           // userName est reset pour retriggerer la demande dans l'onboarding
         });
       },
+
+      // ── Backup parachute ─────────────────────────────────────────
+      // exportData snapshots the persisted slice (see PERSISTED_KEYS) so
+      // the user can save it elsewhere before a phone wipe / uninstall;
+      // importData replays it back.
+      exportData: (): BackupPayload => pickPersisted(get()),
+
+      importData: (payload: BackupPayload) => {
+        // Replace persisted slice; keep `_hasHydrated` and any non-
+        // persisted runtime flags. After the swap, kick off a notif
+        // reschedule so reminders snap back to the imported timeline.
+        set({
+          firstInsertDate: payload.firstInsertDate ?? null,
+          ringStatus: payload.ringStatus,
+          cycleLogs: payload.cycleLogs ?? [],
+          periodLogs: payload.periodLogs ?? [],
+          dayNotes: payload.dayNotes ?? [],
+          notificationsEnabled: payload.notificationsEnabled ?? true,
+          reminderHour: payload.reminderHour ?? 9,
+          reminderMinute: payload.reminderMinute ?? 0,
+          darkMode: payload.darkMode ?? false,
+          language: payload.language ?? 'fr',
+          userName: payload.userName ?? null,
+          hasOnboarded: payload.hasOnboarded ?? true,
+          tempRemovalStart: payload.tempRemovalStart ?? null,
+          tempRemovalNotify: payload.tempRemovalNotify ?? true,
+        });
+        // Reschedule from the freshly-imported state.
+        rescheduleFromLastInsert();
+        reschedulePeriodNotifs();
+      },
       });
     },
     {
@@ -303,26 +343,15 @@ export const useCycleStore = create<CycleState>()(
       name: 'orring-storage-v2',
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
-        // Only persist data, not actions or hydration flag
-        firstInsertDate: state.firstInsertDate,
-        ringStatus: state.ringStatus,
-        cycleLogs: state.cycleLogs,
-        periodLogs: state.periodLogs,
-        dayNotes: state.dayNotes,
-        notificationsEnabled: state.notificationsEnabled,
-        reminderHour: state.reminderHour,
-        reminderMinute: state.reminderMinute,
-        darkMode: state.darkMode,
-        language: state.language,
-        userName: state.userName,
-        hasOnboarded: state.hasOnboarded,
-        tempRemovalStart: state.tempRemovalStart,
-        tempRemovalNotify: state.tempRemovalNotify,
-      }),
-      migrate: (_persisted, _version) => {
-        // No migration path from older builds — always return a clean slate.
-        return { ...INITIAL_DATA };
+      // Only persist data (see PERSISTED_KEYS), not actions or the
+      // hydration flag.
+      partialize: (state) => pickPersisted(state),
+      migrate: (persisted, _version) => {
+        // Preserve the user's persisted slice across any future version
+        // bump and only backfill newly-added fields from INITIAL_DATA.
+        // Returning a clean slate here would silently wipe the user's
+        // entire cycle / period history the moment `version` is bumped.
+        return { ...INITIAL_DATA, ...((persisted as Partial<CycleData>) ?? {}) };
       },
       onRehydrateStorage: () => () => {
         AsyncStorage.removeItem('orrniapp-storage').catch(() => {});

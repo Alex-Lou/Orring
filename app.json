@@ -2,7 +2,7 @@
   "expo": {
     "name": "Orring",
     "slug": "OrrniApp",
-    "version": "2.2.13",
+    "version": "2.7.0",
     "orientation": "default",
     "icon": "./assets/LandingIcon.png",
     "userInterfaceStyle": "automatic",
@@ -13,7 +13,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#FCFBFE"
     },
-    "runtimeVersion": "2.2.13",
+    "runtimeVersion": "2.7.0",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
@@ -33,7 +33,8 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.orrniapp",
-      "versionCode": 10
+      "versionCode": 32,
+      "allowBackup": false
     },
     "plugins": [
       "expo-router",
@@ -44,7 +45,8 @@
           "icon": "./assets/icon.png",
           "color": "#F8B4C8"
         }
-      ]
+      ],
+      "./plugins/withAndroidCleanup.js"
     ],
     "extra": {
       "router": {},

@@ -29,6 +29,10 @@ TARGETS = [
     'IconeHistorique.png',
     'ExplicationIcone.png',
     'ReglageIcone.png',
+    'PeriodesIcone.png',
+    'RetraitAnneauIcone.png',
+    'HistoriqueIcon.png',
+    'PrevisionsIcone.png',
 ]
 
 # Any light grayscale pixel is treated as background. The checkerboard

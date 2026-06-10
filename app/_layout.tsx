@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, Image } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
+import { ErrorBoundaryProps } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
@@ -8,6 +9,7 @@ import { requestNotificationPermissions } from '../src/utils/notifications';
 import { useExpoUpdates } from '../src/hooks/useExpoUpdates';
 import { SplashScreen } from '../src/components/SplashScreen';
 import { UpdateIndicator } from '../src/components/UpdateIndicator';
+import { ConfirmProvider } from '../src/components/ConfirmProvider';
 import { useCycleStore } from '../src/store/cycleStore';
 import { LANGUAGES } from '../src/i18n/translations';
 import '../src/i18n';
@@ -18,254 +20,40 @@ import { useIsRTL } from '../src/i18n/useIsRTL';
 const LIGHT = {
   bg: '#F6F2FB', headerBg: '#EFE8F7', tint: '#7F6EBA',
   text: '#2D2A3A', textSec: '#8B8696', activeBg: '#D9D0EC',
+  // Hairline / soft-edge color — used for the rounded drawer right
+  // edge and any other subtle separator. Kept just barely visible.
+  border: 'rgba(45,42,58,0.12)',
 };
 const DARK = {
   bg: '#1C1829', headerBg: '#2A2440', tint: '#C9BCEC',
   text: '#EEE8F8', textSec: '#BDB4D2', activeBg: 'rgba(181,165,226,0.22)',
+  border: 'rgba(238,232,248,0.10)',
 };
 
+// v2.6.5: drawer entirely switches from PNG illustrations to Ionicons
+// vector glyphs — sober line-art, automatically theme-aware via the
+// `color` prop (no per-mode export needed), pixel-perfect at any size.
+// The set was picked for visual coherence: all "outline" variants for
+// consistent stroke weight + readable shape across light/dark mode.
 const ROUTE_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; titleKey: string }> = {
-  index: { icon: 'ellipse', titleKey: 'myCycleDrawer' },
-  calendar: { icon: 'calendar', titleKey: 'calendarDrawer' },
-  history: { icon: 'time', titleKey: 'historyDrawer' },
+  index: { icon: 'sync-outline', titleKey: 'myCycleDrawer' },
+  calendar: { icon: 'calendar-outline', titleKey: 'calendarDrawer' },
+  periods: { icon: 'water-outline', titleKey: 'periodsDrawer' },
+  history: { icon: 'time-outline', titleKey: 'historyDrawer' },
   explanations: { icon: 'book-outline', titleKey: 'explanationsDrawer' },
   settings: { icon: 'settings-outline', titleKey: 'settingsDrawer' },
 };
 
-// Drawer "métier" icons are PNGs exported from design tooling that carry a
-// subtle soft-shadow halo around the transparent background. On light themes
-// the halo is invisible (white-on-white), but against the dark drawer bg it
-// reads as a dim white square behind every icon. We wrap the <Image> in a
-// circular-masked, transparent-bg <View> so the halo is clipped to the icon
-// silhouette — no more boxy glow. `fadeDuration={0}` also suppresses the
-// brief Android default fade-in that can flash the image backing color.
-const DRAWER_ICON_PNGS: Record<string, any> = {
-  index: require('../assets/iconesMetier/MonCycleIcone.png'),
-  calendar: require('../assets/iconesMetier/IconeCalendrier.png'),
-  history: require('../assets/iconesMetier/IconeHistorique.png'),
-  explanations: require('../assets/iconesMetier/ExplicationIcone.png'),
-  settings: require('../assets/iconesMetier/ReglageIcone.png'),
-};
-
-function DrawerMetierIcon({ routeName }: { routeName: string }) {
-  const src = DRAWER_ICON_PNGS[routeName];
-  if (!src) return null;
-  return (
-    <View style={drawerIconStyles.box}>
-      <Image
-        source={src}
-        style={drawerIconStyles.img}
-        resizeMode="contain"
-        fadeDuration={0}
-      />
-    </View>
-  );
-}
-
-const drawerIconStyles = StyleSheet.create({
-  box: {
-    width: 26,
-    height: 26,
-    // Circular clip hides the rectangular soft-glow halo baked into the
-    // pastel PNGs, which otherwise reads as a white square on the dark
-    // drawer background. Radius slightly > half so the corners are fully
-    // rounded without clipping the central artwork.
-    borderRadius: 13,
-    overflow: 'hidden',
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  img: {
-    width: 24,
-    height: 24,
-    backgroundColor: 'transparent',
-  },
-});
+// DrawerMetierIcon + DRAWER_ICON_PNGS removed in v2.6.5. The renderer
+// in `getScreenOptions` now goes straight to the Ionicons glyph from
+// ROUTE_CONFIG — vector, theme-aware, looks crisp at any density.
 
 
-// ─── Greeting-icon debug picker (drawer header, index screen only) ───
-//
-// A tiny dropdown parked next to the "Mon Cycle" title lets us force any of
-// the four time-of-day icons (Matin / ApresMidi / Soir / Nuit) without having
-// to wait for the real clock or rebuild. Selecting "Auto" resets to the
-// time-based logic. State lives in the zustand store (non-persisted), so it
-// naturally resets on every app boot.
-//
-// Icon PNG sources stay at module scope (cheap `require` de-duplication),
-// but the label list is built inside the component so we can pull localized
-// strings from `t()` — crucial for languages like Arabic where hardcoded
-// French labels would look out of place.
-const ICON_SRCS = {
-  morning: require('../assets/icones/Matin.png'),
-  sun: require('../assets/icones/ApresMidi.png'),
-  sunset: require('../assets/icones/Soir.png'),
-  night: require('../assets/icones/Nuit.png'),
-};
+// GreetingIconDebugPicker + its ICON_SRCS / debugStyles were removed in
+// v2.6.5 — the dev-time time-of-day override is no longer surfaced. The
+// store's `debugIconOverride` field stays available as a future hook
+// (e.g. an admin / QA mode) but is never read by the UI.
 
-function GreetingIconDebugPicker() {
-  const { debugIconOverride, setDebugIconOverride, darkMode } = useCycleStore();
-  const { t } = useTranslation();
-  const isRTL = useIsRTL();
-  const [open, setOpen] = useState(false);
-  const theme = darkMode ? DARK : LIGHT;
-
-  // Rebuilt on every render so language changes take effect immediately —
-  // the work is trivial (5 small objects) so memoizing wouldn't win
-  // anything meaningful.
-  const ICON_OPTIONS: Array<{
-    key: 'morning' | 'sun' | 'sunset' | 'night' | null;
-    label: string;
-    src: any;
-  }> = [
-    { key: null, label: 'Auto', src: null },
-    { key: 'morning', label: t('greetingMorning'), src: ICON_SRCS.morning },
-    { key: 'sun', label: t('greetingAfternoon'), src: ICON_SRCS.sun },
-    { key: 'sunset', label: t('greetingEvening'), src: ICON_SRCS.sunset },
-    { key: 'night', label: t('greetingNight'), src: ICON_SRCS.night },
-  ];
-  const current = ICON_OPTIONS.find(o => o.key === debugIconOverride) ?? ICON_OPTIONS[0];
-
-  return (
-    <>
-      <Pressable
-        onPress={() => setOpen(true)}
-        style={({ pressed }) => [
-          debugStyles.trigger,
-          // Margin anchors the trigger to the edge it sits against: 12px
-          // inside the right edge in LTR (header-right slot), or 12px inside
-          // the left edge in RTL (header-left slot beside the RTL burger).
-          isRTL ? { marginLeft: 12 } : { marginRight: 12 },
-          { backgroundColor: theme.activeBg, opacity: pressed ? 0.7 : 1 },
-        ]}
-        hitSlop={8}
-      >
-        {current.src ? (
-          <Image
-            source={current.src}
-            style={[
-              debugStyles.triggerIcon,
-              // Nuit.png is 100%-framed while the others are ~85% — shrink
-              // it a touch so every icon looks the same visible size.
-              current.key === 'night' && { width: 19, height: 19 },
-            ]}
-            resizeMode="contain"
-          />
-        ) : (
-          <Text style={[debugStyles.triggerAuto, { color: theme.text }]}>🕒</Text>
-        )}
-        <Text style={[debugStyles.triggerLabel, { color: theme.text }]}>{current.label}</Text>
-        <Text style={{ color: theme.textSec, fontSize: 10 }}>▾</Text>
-      </Pressable>
-
-      <Modal
-        transparent
-        visible={open}
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
-      >
-        <Pressable style={debugStyles.backdrop} onPress={() => setOpen(false)}>
-          <View
-            style={[
-              debugStyles.menu,
-              // The picker trigger lives on the RIGHT in LTR and the LEFT in
-              // RTL — pop the dropdown out from the matching side so it
-              // visually anchors to the button that opened it.
-              isRTL ? { left: 12 } : { right: 12 },
-              { backgroundColor: theme.headerBg, borderColor: darkMode ? '#4A3068' : '#E0D8E8' },
-            ]}
-          >
-            {ICON_OPTIONS.map((opt) => {
-              const active = debugIconOverride === opt.key;
-              return (
-                <Pressable
-                  key={opt.key ?? 'auto'}
-                  onPress={() => { setDebugIconOverride(opt.key); setOpen(false); }}
-                  style={({ pressed }) => [
-                    debugStyles.menuItem,
-                    active && { backgroundColor: theme.activeBg },
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  {opt.src ? (
-                    <View style={debugStyles.menuItemIconBox}>
-                      <Image
-                        source={opt.src}
-                        style={{ width: opt.key === 'night' ? 22 : 26, height: opt.key === 'night' ? 22 : 26 }}
-                        resizeMode="contain"
-                      />
-                    </View>
-                  ) : (
-                    <View style={debugStyles.menuItemIconBox}>
-                      <Text style={debugStyles.menuItemEmoji}>🕒</Text>
-                    </View>
-                  )}
-                  <Text
-                    style={[
-                      debugStyles.menuItemLabel,
-                      { color: active ? theme.tint : theme.text },
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </Pressable>
-      </Modal>
-    </>
-  );
-}
-
-const debugStyles = StyleSheet.create({
-  trigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 14,
-    // Horizontal margin is applied inline (RTL-aware) to anchor the trigger
-    // against whichever edge it lives next to.
-  },
-  triggerIcon: { width: 22, height: 22 },
-  triggerAuto: { fontSize: 16 },
-  triggerLabel: { fontSize: 12, fontWeight: '600' },
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-  },
-  menu: {
-    position: 'absolute',
-    top: 56,
-    // `left` / `right` are applied inline (RTL-aware) — not here.
-    minWidth: 160,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingVertical: 6,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  menuItemIcon: { width: 26, height: 26 },
-  // Box fixe garantit que l'icône (Image ou 🕒) occupe le même slot visuel
-  // même si une image échoue à se charger ou se résout à 0x0 — l'utilisateur
-  // voyait le dropdown s'afficher avec des labels "alignés" mais sans
-  // glyphe, symptôme d'une image rendue à taille nulle.
-  menuItemIconBox: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  menuItemEmoji: { fontSize: 20 },
-  menuItemLabel: { fontSize: 14, fontWeight: '600' },
-});
 
 // ─── Drawer content ───
 function CustomDrawerContent(props: any) {
@@ -373,10 +161,9 @@ export default function RootLayout() {
     return {
       title: config ? t(config.titleKey) : route.name,
       drawerIcon: config
-        ? ({ color }: { color: string }) =>
-            DRAWER_ICON_PNGS[route.name]
-              ? <DrawerMetierIcon routeName={route.name} />
-              : <Ionicons name={config.icon} size={22} color={color} />
+        ? ({ color }: { color: string }) => (
+            <Ionicons name={config.icon} size={22} color={color} />
+          )
         : undefined,
       headerStyle: { backgroundColor: theme.headerBg, elevation: 0, shadowOpacity: 0 },
       headerTintColor: theme.tint,
@@ -385,24 +172,44 @@ export default function RootLayout() {
       // force any of the four greeting icons without waiting for the clock.
       //
       // The drawer library renders the hamburger button on whichever side
-      // `drawerPosition` points to (left by default, right in RTL). Since we
-      // set a custom header element on the SAME side, we'd displace the
-      // burger entirely. So we mount the debug picker OPPOSITE the burger:
-      //   LTR : burger left  → picker right
-      //   RTL : burger right → picker left
-      headerRight:
-        route.name === 'index' && !isRTL
-          ? () => <GreetingIconDebugPicker />
-          : undefined,
-      headerLeft:
-        route.name === 'index' && isRTL
-          ? () => <GreetingIconDebugPicker />
-          : undefined,
+      // GreetingIconDebugPicker removed in v2.6.5 — was a dev-time
+      // dropdown for forcing a specific time-of-day greeting icon
+      // without waiting for the real clock. The component definition
+      // + store field are kept (debugIconOverride) for any future
+      // re-introduction, but the UI hook is gone.
       drawerActiveTintColor: theme.tint,
       drawerInactiveTintColor: theme.textSec,
       drawerActiveBackgroundColor: theme.activeBg,
       drawerLabelStyle: { fontSize: 15, fontWeight: '600' as const, marginLeft: -8 },
-      drawerStyle: { backgroundColor: theme.bg, width: 270 },
+      // v2.7.0 design pass: soften the drawer's exposed edge so it
+      // reads as a friendly card sliding in instead of a hard
+      // rectangular sheet. Only the trailing edge (the one facing the
+      // main content while the drawer is open) gets rounded — in LTR
+      // that's the right side, in RTL it's the left. The other edge
+      // is offscreen so rounding it would do nothing.
+      // A subtle hairline + drop shadow on the trailing edge gives
+      // depth without being loud.
+      drawerStyle: {
+        backgroundColor: theme.bg,
+        width: 272,
+        borderTopRightRadius: isRTL ? 0 : 22,
+        borderBottomRightRadius: isRTL ? 0 : 22,
+        borderTopLeftRadius: isRTL ? 22 : 0,
+        borderBottomLeftRadius: isRTL ? 22 : 0,
+        // RN drawer's outer container drops a subtle shadow already
+        // on Android's elevation; we layer a soft side-shadow via a
+        // light hairline border on the trailing edge for the rounding
+        // to read crisply against the page.
+        borderRightWidth: isRTL ? 0 : StyleSheet.hairlineWidth,
+        borderLeftWidth: isRTL ? StyleSheet.hairlineWidth : 0,
+        borderColor: theme.border,
+        elevation: 8,
+        shadowColor: '#000',
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+        shadowOffset: { width: isRTL ? -2 : 2, height: 0 },
+        overflow: 'hidden' as const,
+      },
       drawerItemStyle: { borderRadius: 14, marginVertical: 2, paddingVertical: 2 },
       // In RTL languages (Arabic) the drawer & burger live on the right —
       // this is the native RTL pattern (vs. flipping the whole UI with
@@ -462,20 +269,75 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.bg }}>
-      <Drawer
-        drawerContent={(props) => <CustomDrawerContent {...props} />}
-        screenOptions={getScreenOptions}
-      >
-        <Drawer.Screen name="index" />
-        <Drawer.Screen name="calendar" />
-        <Drawer.Screen name="history" />
-        <Drawer.Screen name="explanations" />
-        <Drawer.Screen name="settings" />
-      </Drawer>
-      <UpdateIndicator status={updateStatus} onApply={applyUpdate} />
+      {/* ConfirmProvider sits above the Drawer so every screen can call
+          `useConfirm()` to surface a themed dialog instead of the
+          native `Alert.alert` (which renders as a stark white sheet
+          that breaks the app's palette). One mount, app-wide. */}
+      <ConfirmProvider>
+        <Drawer
+          drawerContent={(props) => <CustomDrawerContent {...props} />}
+          screenOptions={getScreenOptions}
+        >
+          <Drawer.Screen name="index" />
+          <Drawer.Screen name="calendar" />
+          <Drawer.Screen name="periods" />
+          <Drawer.Screen name="history" />
+          <Drawer.Screen name="explanations" />
+          <Drawer.Screen name="settings" />
+        </Drawer>
+        <UpdateIndicator status={updateStatus} onApply={applyUpdate} />
+      </ConfirmProvider>
     </GestureHandlerRootView>
   );
 }
+
+// ─── App-wide render-error net ───
+// Expo Router renders this instead of a blank white screen if any route
+// subtree throws during render. Kept dependency-light (fixed light palette,
+// no store/hook reads) so it still paints even when the crash originated in
+// state or theming. The user's persisted data is never touched here.
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={[boundaryStyles.root, { backgroundColor: LIGHT.bg }]}>
+        <Text style={boundaryStyles.emoji}>🌸</Text>
+        <Text style={[boundaryStyles.title, { color: LIGHT.text }]}>
+          {i18n.t('errorTitle', { defaultValue: 'Oups, un petit souci' })}
+        </Text>
+        <Text style={[boundaryStyles.body, { color: LIGHT.textSec }]}>
+          {i18n.t('errorBody', {
+            defaultValue: "Tes données sont en sécurité. Réessaie pour revenir à l'application.",
+          })}
+        </Text>
+        <Pressable
+          onPress={retry}
+          style={({ pressed }) => [
+            boundaryStyles.btn,
+            { backgroundColor: LIGHT.tint },
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          <Text style={boundaryStyles.btnText}>
+            {i18n.t('errorRetry', { defaultValue: 'Réessayer' })}
+          </Text>
+        </Pressable>
+        {__DEV__ && error?.message ? (
+          <Text style={boundaryStyles.debug}>{error.message}</Text>
+        ) : null}
+      </View>
+    </GestureHandlerRootView>
+  );
+}
+
+const boundaryStyles = StyleSheet.create({
+  root: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  emoji: { fontSize: 48, marginBottom: 12 },
+  title: { fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+  body: { fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  btn: { paddingHorizontal: 28, paddingVertical: 13, borderRadius: 16 },
+  btnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  debug: { marginTop: 20, fontSize: 11, color: '#B00', textAlign: 'center', opacity: 0.7 },
+});
 
 const styles = StyleSheet.create({
   divider: { height: 1, marginHorizontal: 16, marginVertical: 10 },

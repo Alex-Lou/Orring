@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Modal, Pressable } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { subDays } from 'date-fns';

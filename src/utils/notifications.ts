@@ -2,6 +2,8 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { addDays } from 'date-fns';
 import { RING_IN_DAYS, CYCLE_LENGTH } from './cycle';
+import i18n from '../i18n';
+import { getNotifCopy } from '../i18n/notificationStrings';
 
 // ─── Setup ───
 
@@ -18,7 +20,7 @@ Notifications.setNotificationHandler({
 async function ensureAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync('orring-reminders', {
-    name: 'Rappels Orring',
+    name: getNotifCopy(i18n.language).channelName,
     importance: Notifications.AndroidImportance.HIGH,
     sound: 'default',
     vibrationPattern: [0, 250, 250, 250],
@@ -42,8 +44,31 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 
 const CHANNEL_ID = 'orring-reminders';
 
-async function scheduleAt(date: Date, title: string, body: string): Promise<void> {
+// Identifier prefixes — used to cancel only OUR notifs without nuking
+// the ones from the other scheduler. Before the prefixed model we used
+// `cancelAllScheduledNotificationsAsync()` which made it impossible to
+// run ring + period reminders side-by-side.
+const RING_PREFIX = 'orring-ring-';
+const PERIOD_PREFIX = 'orring-period-';
+const TEMP_REMOVAL_NOTIF_ID = 'orring-temp-removal';
+
+async function cancelByPrefix(prefix: string): Promise<void> {
+  const all = await Notifications.getAllScheduledNotificationsAsync();
+  for (const n of all) {
+    if (n.identifier.startsWith(prefix)) {
+      await Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {});
+    }
+  }
+}
+
+async function scheduleAt(
+  date: Date,
+  title: string,
+  body: string,
+  identifier?: string,
+): Promise<void> {
   await Notifications.scheduleNotificationAsync({
+    ...(identifier ? { identifier } : {}),
     content: {
       title,
       body,
@@ -67,40 +92,160 @@ export async function scheduleRingNotifications(
   reminderMinute: number = 0
 ): Promise<void> {
   await ensureAndroidChannel();
-  // Cancel all existing cycle notifications first
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  // Cancel ONLY the ring notifs — don't touch period or temp-removal IDs.
+  await cancelByPrefix(RING_PREFIX);
 
   const removalDate = addDays(insertionDate, RING_IN_DAYS);
   const nextInsertDate = addDays(insertionDate, CYCLE_LENGTH);
   const now = new Date();
 
-  const events: Array<{ date: Date; title: string; body: string }> = [
+  const c = getNotifCopy(i18n.language);
+  const events: Array<{ date: Date; title: string; body: string; suffix: string }> = [
     // ─── RETRAIT ───
-    { date: atHour(removalDate, reminderHour, reminderMinute, -7), title: '⭕ Orring — Dans 7 jours', body: "Pense à retirer ton anneau dans 7 jours." },
-    { date: atHour(removalDate, reminderHour, reminderMinute, -1), title: '♻️ Orring — Demain !', body: "C'est demain qu'il faut retirer ton anneau." },
-    { date: atHour(removalDate, reminderHour, reminderMinute, 0), title: "♻️ Orring — C'est aujourd'hui !", body: "C'est le jour de retirer ton anneau." },
+    { date: atHour(removalDate, reminderHour, reminderMinute, -7), title: c.removeJ7.title, body: c.removeJ7.body, suffix: 'remove-j7' },
+    { date: atHour(removalDate, reminderHour, reminderMinute, -1), title: c.removeJ1.title, body: c.removeJ1.body, suffix: 'remove-j1' },
+    { date: atHour(removalDate, reminderHour, reminderMinute, 0), title: c.removeJ0.title, body: c.removeJ0.body, suffix: 'remove-j0' },
     // ─── INSERTION prochain cycle ───
-    { date: atHour(nextInsertDate, reminderHour, reminderMinute, -7), title: '⭕ Orring — Dans 7 jours', body: "Pense à remettre ton anneau dans 7 jours." },
-    { date: atHour(nextInsertDate, reminderHour, reminderMinute, -1), title: "⭕ Orring — Demain !", body: "C'est demain qu'il faut remettre ton anneau." },
-    { date: atHour(nextInsertDate, reminderHour, reminderMinute, 0), title: "⭕ Orring — C'est aujourd'hui !", body: "C'est le jour de remettre ton anneau !" },
+    { date: atHour(nextInsertDate, reminderHour, reminderMinute, -7), title: c.insertJ7.title, body: c.insertJ7.body, suffix: 'insert-j7' },
+    { date: atHour(nextInsertDate, reminderHour, reminderMinute, -1), title: c.insertJ1.title, body: c.insertJ1.body, suffix: 'insert-j1' },
+    { date: atHour(nextInsertDate, reminderHour, reminderMinute, 0), title: c.insertJ0.title, body: c.insertJ0.body, suffix: 'insert-j0' },
   ];
 
   for (const ev of events) {
     if (ev.date > now) {
-      await scheduleAt(ev.date, ev.title, ev.body);
+      await scheduleAt(ev.date, ev.title, ev.body, RING_PREFIX + ev.suffix);
     }
   }
 }
 
 // ─── Cancel all ───
 
+/**
+ * Nukes every scheduled Orring notification — used by `setNotificationsEnabled(false)`
+ * and `resetAll`. Also cancels notifications from other apps technically, but the
+ * Expo API only sees its own queue so it's safe.
+ */
 export async function cancelAllNotifications(): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
 
-// ─── Temporary removal timer (3h) ───
+// ─── Period reminders ───
 
-const TEMP_REMOVAL_NOTIF_ID = 'orring-temp-removal';
+/**
+ * Schedule the 3 period-prediction reminders around an expected start date:
+ *   J-2 : "Tes règles arrivent dans 2 jours — pense à te préparer"
+ *   J-0 : "Aujourd'hui c'est la date prévue — quelque chose à signaler ?"
+ *   J+3 : "3 jours de retard — tout va bien ?"
+ *
+ * Each fires at `reminderHour:reminderMinute` to align with the user's
+ * preferred reminder time (same setting as the ring reminders). All three
+ * share the PERIOD_PREFIX so we can cancel/rebuild without affecting ring
+ * notifications.
+ *
+ * No-op if `predictedStart` is `null` (not enough history yet) or already
+ * far enough in the past that all 3 reminders would be skipped.
+ */
+// Sub-IDs for the prediction trio so we can cancel ONLY them without
+// touching the sibling open-stale reminder that lives under the same
+// PERIOD_PREFIX umbrella.
+const PERIOD_PRED_IDS = [
+  PERIOD_PREFIX + 'pred-j2',
+  PERIOD_PREFIX + 'pred-j0',
+  PERIOD_PREFIX + 'pred-j+3',
+];
+
+export async function schedulePeriodNotifications(
+  predictedStart: Date | null,
+  reminderHour: number = 9,
+  reminderMinute: number = 0,
+): Promise<void> {
+  await ensureAndroidChannel();
+  // Cancel JUST the three prediction notifs — leave the open-stale
+  // reminder in place so we don't have to re-schedule it on every
+  // mutation that touches the prediction date.
+  for (const id of PERIOD_PRED_IDS) {
+    await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+  }
+  if (!predictedStart) return;
+
+  const now = new Date();
+  // Period reminders: warm + supportive copy, never alarming. The
+  // emoji choices mirror the "Mes périodes" card states (🌸 ahead,
+  // 🩸 day-of, 🌙 late) so the lockscreen visual matches what the
+  // user sees in the app.
+  const c = getNotifCopy(i18n.language);
+  const events: Array<{ date: Date; title: string; body: string; suffix: string }> = [
+    {
+      date: atHour(predictedStart, reminderHour, reminderMinute, -2),
+      title: c.periodJ2.title,
+      body: c.periodJ2.body,
+      suffix: 'pred-j2',
+    },
+    {
+      date: atHour(predictedStart, reminderHour, reminderMinute, 0),
+      title: c.periodJ0.title,
+      body: c.periodJ0.body,
+      suffix: 'pred-j0',
+    },
+    {
+      date: atHour(predictedStart, reminderHour, reminderMinute, 3),
+      title: c.periodLate.title,
+      body: c.periodLate.body,
+      suffix: 'pred-j+3',
+    },
+  ];
+
+  for (const ev of events) {
+    if (ev.date > now) {
+      await scheduleAt(ev.date, ev.title, ev.body, PERIOD_PREFIX + ev.suffix);
+    }
+  }
+}
+
+export async function cancelPeriodNotifications(): Promise<void> {
+  await cancelByPrefix(PERIOD_PREFIX);
+}
+
+/**
+ * Stale-open-period reminder. When the user has logged a period but
+ * left it open (no endDate) and hasn't touched it for 2+ days, fire
+ * a single gentle reminder at `reminderHour` on `lastCoveredDay + 2`.
+ *
+ * Cancels any prior stale reminder first so a fresh log update pushes
+ * the reminder back. No-op when `lastCoveredDay` is null (no open
+ * period) or when the reminder time is already in the past.
+ */
+export async function scheduleOpenPeriodReminder(
+  lastCoveredDay: Date | null,
+  reminderHour: number = 9,
+  reminderMinute: number = 0,
+): Promise<void> {
+  await ensureAndroidChannel();
+  // Use a sub-prefix so this reminder is independent from the
+  // prediction trio (J-2 / J0 / J+3) which lives under PERIOD_PREFIX
+  // too — but we only want to cancel/reschedule THIS specific notif
+  // here, not blow away the prediction queue.
+  const id = PERIOD_PREFIX + 'open-stale';
+  await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+  if (!lastCoveredDay) return;
+
+  const trigger = atHour(lastCoveredDay, reminderHour, reminderMinute, 2);
+  if (trigger <= new Date()) return;
+
+  const c = getNotifCopy(i18n.language);
+  await Notifications.scheduleNotificationAsync({
+    identifier: id,
+    content: {
+      title: c.periodOpen.title,
+      body: c.periodOpen.body,
+      sound: true,
+      ...(Platform.OS === 'android' ? { channelId: CHANNEL_ID } : {}),
+    },
+    trigger: { date: trigger, type: Notifications.SchedulableTriggerInputTypes.DATE },
+  });
+}
+
+// ─── Temporary removal timer (3h) ───
 
 export async function scheduleTempRemovalNotif(removedAt: Date): Promise<void> {
   await ensureAndroidChannel();
@@ -110,11 +255,12 @@ export async function scheduleTempRemovalNotif(removedAt: Date): Promise<void> {
   const triggerDate = new Date(removedAt.getTime() + 3 * 60 * 60 * 1000);
   if (triggerDate.getTime() <= Date.now()) return;
 
+  const c = getNotifCopy(i18n.language);
   await Notifications.scheduleNotificationAsync({
     identifier: TEMP_REMOVAL_NOTIF_ID,
     content: {
-      title: '⏰ Orring — Il est temps de remettre',
-      body: "Ton anneau est retiré depuis 3h. Pense à le remettre pour ne pas perdre l'efficacité !",
+      title: c.tempRemoval.title,
+      body: c.tempRemoval.body,
       sound: true,
       ...(Platform.OS === 'android' ? { channelId: CHANNEL_ID } : {}),
     },
@@ -128,10 +274,4 @@ export async function cancelTempRemovalNotif(): Promise<void> {
   } catch {
     /* ignore if not found */
   }
-}
-
-// ─── Debug: list scheduled ───
-
-export async function getScheduledNotifications() {
-  return Notifications.getAllScheduledNotificationsAsync();
 }

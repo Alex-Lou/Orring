@@ -16,6 +16,11 @@ interface Section {
 const SECTIONS: Section[] = [
   { emoji: '🌙', titleKey: 'expSection1', bodyKey: 'expSection1Body' },
   { emoji: '💠', titleKey: 'expSection4', bodyKey: 'expSection4Body' },
+  // "Mes périodes" section added in v2.6.5 — explains how the
+  // dedicated period-tracker tab works (independent calendar, guided
+  // flow, predictions, smart reminders). Sits between the ring
+  // explainer and the period-physiology one to land naturally.
+  { emoji: '🩸', titleKey: 'expSectionPeriods', bodyKey: 'expSectionPeriodsBody' },
   { emoji: '🌸', titleKey: 'expSection2', bodyKey: 'expSection2Body' },
   { emoji: '💡', titleKey: 'expSection3', bodyKey: 'expSection3Body' },
 ];

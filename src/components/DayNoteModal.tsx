@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, TextInput, ScrollView } from 'react-native';
-import Animated, { FadeIn, FadeInUp, SlideInUp } from 'react-native-reanimated';
+import { View, Text, StyleSheet, Modal, Pressable, TextInput } from 'react-native';
+import Animated, { SlideInUp } from 'react-native-reanimated';
 import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '../theme';
 import { formatDateFr, formatDateTimeFr, getStatusLabel, getStatusEmoji, DayStatus } from '../utils/cycle';
 import { useTheme } from '../theme/useTheme';

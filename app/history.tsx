@@ -1,14 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, { FadeInDown, FadeIn, FadeInUp } from 'react-native-reanimated';
-import { colors, spacing, fontSize, fontWeight, borderRadius, shadows } from '../src/theme';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { colors, spacing, fontSize, fontWeight, borderRadius } from '../src/theme';
 import { CycleHistoryCard } from '../src/components/CycleHistoryCard';
-import { generateCycleHistory, CycleHistoryEntry, formatDateFr } from '../src/utils/cycle';
+import { generateCycleHistory, formatDateFr } from '../src/utils/cycle';
 import { useCycleStore } from '../src/store/cycleStore';
 import { useTheme } from '../src/theme/useTheme';
 import { useTranslation } from 'react-i18next';
 import { useIsRTL } from '../src/i18n/useIsRTL';
+import { useConfirm } from '../src/components/ConfirmProvider';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function HistoryScreen() {
   const { firstInsertDate, cycleLogs, periodLogs, clearHistory, deleteCycleLogsBetween, setRingStatus } = useCycleStore();
@@ -17,6 +19,7 @@ export default function HistoryScreen() {
   const { t } = useTranslation();
   const isRTL = useIsRTL();
   const theme = useTheme();
+  const confirm = useConfirm();
 
   const { past, future } = useMemo(() => {
     if (!firstInsertDate) return { past: [], future: [] };
@@ -63,10 +66,15 @@ export default function HistoryScreen() {
             </View>
             {cycleLogs.length > 0 && (
               <Pressable
-                onPress={() => Alert.alert(t('deleteAllTitle'), t('deleteAllConfirm'), [
-                  { text: t('cancel'), style: 'cancel' },
-                  { text: t('clearAction'), style: 'destructive', onPress: clearHistory },
-                ])}
+                onPress={async () => {
+                  if (await confirm({
+                    title: t('deleteAllTitle'),
+                    body: t('deleteAllConfirm'),
+                    confirmLabel: t('clearAction'),
+                    destructive: true,
+                    emoji: '🗑',
+                  })) clearHistory();
+                }}
                 style={styles.clearBtn}
               >
                 <Text style={styles.clearText}>🗑 {t('clearAll')}</Text>
@@ -79,9 +87,18 @@ export default function HistoryScreen() {
         {past.length > 0 && (
           <>
             <Pressable onPress={() => setHistoryOpen(!historyOpen)} style={[styles.sectionHeader, isRTL && styles.rtlRow, { borderBottomColor: theme.border }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                {historyOpen ? '▼' : (isRTL ? '◀' : '▶')} 📖 {t('history')}
-              </Text>
+              <View style={[styles.sectionTitleRow, isRTL && styles.rtlRow]}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                  {historyOpen ? '▼' : (isRTL ? '◀' : '▶')}
+                </Text>
+                <Ionicons
+                  name="time-outline"
+                  size={22}
+                  color={theme.text}
+                  style={styles.sectionIcon}
+                />
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('history')}</Text>
+              </View>
               <Text style={[styles.sectionCount, { color: theme.textSecondary }]}>{t('cycleCount', { count: past.length })}</Text>
             </Pressable>
             {historyOpen && past.map((entry, index) => (
@@ -89,37 +106,35 @@ export default function HistoryScreen() {
                 <CycleHistoryCard
                   entry={entry}
                   index={index}
-                  onDelete={() => {
+                  onDelete={async () => {
                     const startDay = new Date(entry.theoreticalInsertDate);
                     startDay.setHours(0, 0, 0, 0);
                     const endDay = new Date(entry.theoreticalPauseEnd);
                     endDay.setHours(23, 59, 59, 999);
 
                     if (entry.status === 'current') {
-                      Alert.alert(
-                        t('deleteCurrentCycleTitle'),
-                        t('deleteCurrentCycleMessage'),
-                        [
-                          { text: t('cancel'), style: 'cancel' },
-                          { text: t('confirm'), style: 'destructive', onPress: () => {
-                            deleteCycleLogsBetween(startDay.getTime(), endDay.getTime());
-                            setRingStatus('out');
-                          }},
-                        ]
-                      );
+                      if (await confirm({
+                        title: t('deleteCurrentCycleTitle'),
+                        body: t('deleteCurrentCycleMessage'),
+                        confirmLabel: t('confirm'),
+                        destructive: true,
+                        emoji: '🗑',
+                      })) {
+                        deleteCycleLogsBetween(startDay.getTime(), endDay.getTime());
+                        setRingStatus('out');
+                      }
                       return;
                     }
 
-                    Alert.alert(
-                      t('deleteCycle'),
-                      t('deleteCycleRange', { start: formatDateFr(entry.theoreticalInsertDate, 'dd MMM'), end: formatDateFr(entry.theoreticalPauseEnd, 'dd MMM') }),
-                      [
-                        { text: t('cancel'), style: 'cancel' },
-                        { text: t('delete'), style: 'destructive', onPress: () => {
-                          deleteCycleLogsBetween(startDay.getTime(), endDay.getTime());
-                        }},
-                      ]
-                    );
+                    if (await confirm({
+                      title: t('deleteCycle'),
+                      body: t('deleteCycleRange', { start: formatDateFr(entry.theoreticalInsertDate, 'dd MMM'), end: formatDateFr(entry.theoreticalPauseEnd, 'dd MMM') }),
+                      confirmLabel: t('delete'),
+                      destructive: true,
+                      emoji: '🗑',
+                    })) {
+                      deleteCycleLogsBetween(startDay.getTime(), endDay.getTime());
+                    }
                   }}
                 />
               </Animated.View>
@@ -131,9 +146,18 @@ export default function HistoryScreen() {
         {future.length > 0 && (
           <>
             <Pressable onPress={() => setPrevisionsOpen(!previsionsOpen)} style={[styles.sectionHeader, isRTL && styles.rtlRow, { borderBottomColor: theme.border }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                {previsionsOpen ? '▼' : (isRTL ? '◀' : '▶')} 🔮 {t('predictions')}
-              </Text>
+              <View style={[styles.sectionTitleRow, isRTL && styles.rtlRow]}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                  {previsionsOpen ? '▼' : (isRTL ? '◀' : '▶')}
+                </Text>
+                <Ionicons
+                  name="sparkles-outline"
+                  size={22}
+                  color={theme.text}
+                  style={styles.sectionIcon}
+                />
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>{t('predictions')}</Text>
+              </View>
               <Text style={[styles.sectionCount, { color: theme.textSecondary }]}>{t('cycleCount', { count: future.length })}</Text>
             </Pressable>
             {previsionsOpen && future.map((entry, index) => (
@@ -168,6 +192,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   sectionTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
+  // Inline icon between the disclosure caret and the section label.
+  // 26 px keeps the row height the same as the legacy emoji line so
+  // collapsing/expanding doesn't cause layout shift.
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionIcon: { width: 26, height: 26 },
   sectionCount: { fontSize: fontSize.sm, color: colors.textSecondary },
 
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xxl },

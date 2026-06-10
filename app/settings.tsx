@@ -1,20 +1,27 @@
 import React, { useState } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, Pressable, Switch, Alert, TextInput } from 'react-native';
+import { View, Text, Image, ScrollView, Pressable, Switch, TextInput } from 'react-native';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { router } from 'expo-router';
+import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '../src/theme';
 import { useCycleStore } from '../src/store/cycleStore';
-import { formatDateFr, formatDateTimeFr, getCycleInfoFromLogs } from '../src/utils/cycle';
-import { addDays, subDays } from 'date-fns';
+import { formatDateTimeFr } from '../src/utils/cycle';
 import { useTheme } from '../src/theme/useTheme';
 import { useTranslation } from 'react-i18next';
 import { useIsRTL } from '../src/i18n/useIsRTL';
+import { useConfirm } from '../src/components/ConfirmProvider';
+import { GoodbyeFarewell } from '../src/components/GoodbyeFarewell';
+import { RestoreBackupModal } from '../src/components/RestoreBackupModal';
+import { serializeBackup } from '../src/utils/backup';
+import { dateKey } from '../src/utils/dateKey';
+import { styles } from './settings.styles';
 
 export default function SettingsScreen() {
   const {
     firstInsertDate,
-    setFirstInsertDate,
     ringStatus,
     setRingStatus,
     notificationsEnabled,
@@ -22,6 +29,8 @@ export default function SettingsScreen() {
     reminderHour,
     setReminderTime,
     resetAll,
+    exportData,
+    importData,
     userName,
     setUserName,
     darkMode,
@@ -36,35 +45,77 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
   const isRTL = useIsRTL();
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [tempDate, setTempDate] = useState<Date>(
-    firstInsertDate ? new Date(firstInsertDate) : new Date()
-  );
+  const confirm = useConfirm();
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(userName || '');
+  // GoodbyeFarewell visibility — gated by the destructive confirm
+  // dialog above. The reset itself only runs after the user picks
+  // "Tout effacer et partir" inside the farewell screen.
+  const [farewellOpen, setFarewellOpen] = useState(false);
+  // Restore-from-paste UI state. The parent only owns the open/close
+  // flag; the paste text + validation live inside RestoreBackupModal.
+  const [restoreOpen, setRestoreOpen] = useState(false);
 
-  const handleDateConfirm = () => {
-    setFirstInsertDate(tempDate.toISOString());
-    setShowDatePicker(false);
+  // Two-step reset flow:
+  //   1. ConfirmModal — sanity check ("Tu es sûre ?")
+  //   2. GoodbyeFarewell — soft farewell with last chance to backup
+  // The actual store wipe only runs when the user confirms inside
+  // the farewell screen via `handleFarewellConfirm` below.
+  const handleReset = async () => {
+    if (await confirm({
+      title: t('settingsResetTitle'),
+      body: t('settingsResetMessage'),
+      confirmLabel: t('settingsResetLabel'),
+      destructive: true,
+      emoji: '🔄',
+    })) {
+      setFarewellOpen(true);
+    }
   };
 
-  const handleReset = () => {
-    Alert.alert(
-      t('settingsResetTitle'),
-      t('settingsResetMessage'),
-      [
-        { text: t('cancel'), style: 'cancel' },
-        {
-          text: t('settingsResetLabel'),
-          style: 'destructive',
-          onPress: () => {
-            resetAll();
-            // Navigate back to home which will show the onboarding flow fresh
-            setTimeout(() => router.replace('/'), 100);
-          },
-        },
-      ]
-    );
+  // v2.7.0: write the backup to a real .json file in the cache
+  // directory and open the system share sheet on it. The user picks
+  // the destination (Files app → "Téléchargements", Drive, email,
+  // WhatsApp…). The file is named with today's date so the user has
+  // a clear "orring-backup-2026-05-04.json" instead of a JSON blob
+  // of mystery text.
+  //
+  // Writing to `Paths.cache` instead of `Paths.document` is
+  // deliberate — the system can clean it later, but the user has
+  // already moved it elsewhere via the share sheet by then. No
+  // unbounded growth of internal storage.
+  const handleSaveData = async () => {
+    try {
+      const snapshot = exportData();
+      const json = serializeBackup(snapshot, '2.7.0');
+      // YYYY-MM-DD filename — sortable, locale-independent.
+      const stamp = dateKey(new Date());
+      const filename = `orring-backup-${stamp}.json`;
+      const file = new File(Paths.cache, filename);
+      // create({ overwrite: true }) is idempotent — if the user
+      // exports twice the same day the previous file is replaced
+      // cleanly instead of throwing.
+      if (file.exists) file.delete();
+      file.create();
+      file.write(json);
+      const sharingAvailable = await Sharing.isAvailableAsync();
+      if (sharingAvailable) {
+        await Sharing.shareAsync(file.uri, {
+          mimeType: 'application/json',
+          dialogTitle: t('settingsBackupShareTitle', { defaultValue: 'Sauvegarde Orring' }),
+          UTI: 'public.json',
+        });
+      }
+    } catch {
+      // User dismissed the share sheet OR a transient FS error —
+      // silent no-op matches platform conventions.
+    }
+  };
+
+  const handleFarewellConfirm = () => {
+    setFarewellOpen(false);
+    resetAll();
+    setTimeout(() => router.replace('/'), 100);
   };
 
   return (
@@ -224,87 +275,63 @@ export default function SettingsScreen() {
           </View>
         </Animated.View>
 
+        {/* Backup parachute — surfaces "save my data" + "restore"
+            actions independently of the destructive reset flow. */}
+        <View style={[styles.card, { backgroundColor: theme.surface, marginBottom: spacing.md }]}>
+          <Pressable
+            onPress={handleSaveData}
+            style={({ pressed }) => [styles.row, pressed && { opacity: 0.65 }]}
+          >
+            <Text style={[styles.rowLabel, { color: theme.text }]}>
+              💾 {t('settingsBackupSave', { defaultValue: 'Sauvegarder mes données' })}
+            </Text>
+            <Text style={[styles.rowSub, { color: theme.textSecondary }]}>
+              {t('settingsBackupSaveHint', {
+                defaultValue: 'Exporte tes données vers Drive, email, notes…',
+              })}
+            </Text>
+          </Pressable>
+          <View style={[styles.cardSep, { backgroundColor: theme.border }]} />
+          <Pressable
+            onPress={() => setRestoreOpen(true)}
+            style={({ pressed }) => [styles.row, pressed && { opacity: 0.65 }]}
+          >
+            <Text style={[styles.rowLabel, { color: theme.text }]}>
+              📥 {t('settingsBackupRestore', { defaultValue: 'Restaurer depuis une sauvegarde' })}
+            </Text>
+            <Text style={[styles.rowSub, { color: theme.textSecondary }]}>
+              {t('settingsBackupRestoreHint', {
+                defaultValue: 'Colle le texte d\'une sauvegarde précédente.',
+              })}
+            </Text>
+          </Pressable>
+        </View>
+
         {/* Reset */}
         <Pressable style={({ pressed }) => [styles.resetBtn, pressed && { opacity: 0.8 }]} onPress={handleReset}>
           <Text style={styles.resetText}>{t('settingsResetButton')}</Text>
         </Pressable>
 
-        <Text style={[styles.version, { color: theme.textLight }]}>Version 2.1.456</Text>
+        <Text style={[styles.version, { color: theme.textLight }]}>Version {Constants.expoConfig?.version ?? '2.7.0'}</Text>
       </ScrollView>
+
+      <GoodbyeFarewell
+        visible={farewellOpen}
+        onSaveData={handleSaveData}
+        onConfirmReset={handleFarewellConfirm}
+        onCancel={() => setFarewellOpen(false)}
+      />
+
+      {/* Restore-from-paste modal — owns its paste text + validation
+          internally; the parent only controls visibility and passes
+          importData. */}
+      <RestoreBackupModal
+        visible={restoreOpen}
+        onClose={() => setRestoreOpen(false)}
+        onImport={importData}
+        theme={theme}
+        t={t}
+      />
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
-  container: { flex: 1 },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
-  title: { fontSize: fontSize.xxl, fontWeight: fontWeight.bold, color: colors.text },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  rtlRow: { flexDirection: 'row-reverse' },
-  rtlText: { textAlign: 'right', writingDirection: 'rtl' },
-  titlePet: { width: 42, height: 42 },
-  subtitle: { fontSize: fontSize.md, color: colors.textSecondary, marginTop: 4, marginBottom: spacing.lg },
-
-  sectionTitle: {
-    fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textSecondary,
-    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.sm, marginTop: spacing.lg,
-  },
-  card: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.xl, padding: spacing.md,
-    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 3,
-  },
-  cardDesc: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 20 },
-
-  // Date picker
-  setDateBtn: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primarySoft,
-    borderRadius: borderRadius.lg, padding: spacing.md, gap: spacing.sm,
-  },
-  setDateIcon: { fontSize: 20 },
-  setDateText: { flex: 1, fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text, textTransform: 'capitalize' },
-  setDateArrow: { fontSize: 24, color: colors.primaryDark },
-
-  datePicker: { alignItems: 'center' },
-  dateDisplay: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.text, marginBottom: spacing.md, textAlign: 'center', textTransform: 'capitalize' },
-  dateButtons: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  dateBtn: { backgroundColor: colors.primaryLight, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: borderRadius.full },
-  dateBtnText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.primaryDark },
-  todayBtn: { backgroundColor: colors.primary },
-  todayBtnText: { color: colors.textOnPrimary },
-  confirmRow: { flexDirection: 'row', gap: spacing.md },
-  cancelBtn: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: borderRadius.full, borderWidth: 1, borderColor: colors.border },
-  cancelBtnText: { fontSize: fontSize.md, color: colors.textSecondary },
-  confirmBtn: { backgroundColor: colors.primary, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: borderRadius.full },
-  confirmBtnText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textOnPrimary },
-
-  // Ring status
-  ringStatusRow: { flexDirection: 'row', gap: spacing.md },
-  statusBtn: {
-    flex: 1, alignItems: 'center', paddingVertical: spacing.md, borderRadius: borderRadius.lg,
-    borderWidth: 2, borderColor: colors.border, gap: spacing.xs,
-  },
-  statusBtnActiveGreen: { borderColor: colors.ringIn, backgroundColor: colors.ringInLight },
-  statusBtnActiveRed: { borderColor: colors.ringOut, backgroundColor: colors.ringOutLight },
-  statusEmoji: { fontSize: 24 },
-  statusLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
-  statusLabelActive: { color: colors.text, fontWeight: fontWeight.bold },
-
-  // Settings rows
-  settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  settingInfo: { flex: 1, marginRight: spacing.md },
-  settingLabel: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
-  settingDesc: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
-  timeRow: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  timeButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
-  timeBtn: { backgroundColor: colors.primarySoft, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: borderRadius.full },
-  timeBtnActive: { backgroundColor: colors.primary },
-  timeBtnText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
-  timeBtnTextActive: { color: colors.textOnPrimary, fontWeight: fontWeight.bold },
-
-  aboutCycle: { fontSize: fontSize.sm, color: colors.text, lineHeight: 24, backgroundColor: colors.primarySoft, padding: spacing.md, borderRadius: borderRadius.lg },
-
-  resetBtn: { marginTop: spacing.xl, paddingVertical: spacing.md, alignItems: 'center' },
-  resetText: { fontSize: fontSize.sm, color: '#E74C3C', fontWeight: fontWeight.medium },
-  version: { textAlign: 'center', fontSize: fontSize.xs, color: colors.textLight, marginTop: spacing.lg },
-});
