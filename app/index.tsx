@@ -11,6 +11,7 @@ import { ActionButton } from '../src/components/ActionButton';
 import { ConfirmActionModal } from '../src/components/ConfirmActionModal';
 import { useConfirm } from '../src/components/ConfirmProvider';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { Onboarding } from '../src/components/Onboarding';
 import { TempRemovalCountdown } from '../src/components/TempRemovalCountdown';
 import { WithdrawalGauge } from '../src/components/WithdrawalGauge';
@@ -105,20 +106,98 @@ export default function MyCycleScreen() {
   // handlePeriodRemove / setSelectedPeriodDate were all removed
   // alongside the home-screen "Suivi des règles" grid.
 
-  // Show onboarding if no insert date (covers new users + reset users)
-  if (!firstInsertDate || !info) {
-    // Already onboarded but no ring anchored (home "Recommencer" → ring-only
-    // re-entry): jump straight to date + time, keep name/language. A truly
-    // new / factory-reset user (hasOnboarded false) gets the full flow.
-    return (
-      <Onboarding
-        mode={hasOnboarded ? 'ringOnly' : 'full'}
-        onComplete={() => { /* state will re-render from store */ }}
-      />
-    );
+  // Brand-new / factory-reset user (no name/language yet) → full first-run
+  // flow (splash → language → name). It no longer forces a ring.
+  if (!hasOnboarded) {
+    return <Onboarding onComplete={() => { /* state will re-render from store */ }} />;
   }
 
   const ringSize = Math.min(width - 60, 300);
+
+  const handleConfirmAction = (date: Date, options?: { temporary?: boolean; notify?: boolean }) => {
+    if (confirmAction === 'insert') {
+      insertRing(date.toISOString());
+    } else if (confirmAction === 'remove') {
+      if (options?.temporary) {
+        startTempRemoval(options.notify ?? true);
+      } else {
+        removeRing(date.toISOString());
+      }
+    }
+    setConfirmAction(null);
+  };
+
+  // ── Empty home — onboarded but NO ring anchored yet ──────────────────────
+  // A user who skipped the ring (just exploring / tracking periods) or who
+  // tapped "Recommencer mon cycle". The liquid gauge is drawn but EMPTY
+  // (inactive); they insert the ring whenever they want, or head to "Mes
+  // périodes". `info` is null here, so the cycle home below is never reached.
+  if (!firstInsertDate || !info) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+        <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <Animated.View entering={FadeInDown.duration(700).springify()} style={styles.header}>
+            <GreetingHeader info={null} userName={userName} isRTL={isRTL} isTempRemoved={false} theme={theme} t={t} />
+          </Animated.View>
+
+          {/* Empty (inactive) gauge — drawn, no liquid fill, dim invite center. */}
+          <Animated.View key="empty-ring" entering={FadeIn.delay(300).duration(900)} style={styles.ringWrapper}>
+            <CycleRing
+              currentDay={1}
+              size={ringSize}
+              isRingIn
+              phaseLabel={t('ringInPlace')}
+              daysLeft={0}
+              nextAction={t('insertionAction')}
+              inactive
+            />
+          </Animated.View>
+
+          {/* Chill, no-pressure intro */}
+          <Animated.View entering={FadeInUp.delay(500).duration(600)} style={[styles.explainCard, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.explainTitle, { color: theme.text }, isRTL && styles.rtlText]}>
+              {t('noRingTitle')}
+            </Text>
+            <Text style={[styles.explainBody, { color: theme.textSecondary }, isRTL && styles.rtlText]}>
+              {t('noRingBody')}
+            </Text>
+          </Animated.View>
+
+          {/* Two equal paths: insert the ring, or just track periods */}
+          <Animated.View entering={FadeInUp.delay(650).duration(600)}>
+            <View style={styles.actionRow}>
+              <ActionButton
+                icon={<Ionicons name="add-circle-outline" size={42} color={darkMode ? theme.primary : theme.primaryDark} />}
+                label={t('insertedRing')}
+                color={darkMode ? theme.primary : theme.primaryDark}
+                bgColor={darkMode ? 'rgba(181,165,226,0.18)' : theme.primarySoft}
+                onPress={() => setConfirmAction('insert')}
+              />
+            </View>
+            <View style={styles.actionRow}>
+              <ActionButton
+                icon={<Ionicons name="water-outline" size={42} color={darkMode ? '#C9BCEC' : '#8E5A77'} />}
+                label={t('noRingPeriodsCta')}
+                color={darkMode ? '#C9BCEC' : '#8E5A77'}
+                bgColor={darkMode ? 'rgba(181,165,226,0.12)' : colors.ringOutLight}
+                onPress={() => router.push('/periods')}
+              />
+            </View>
+          </Animated.View>
+        </ScrollView>
+
+        <ConfirmActionModal
+          visible={!!confirmAction}
+          action={confirmAction || 'insert'}
+          isEarly={false}
+          insertionDate={null}
+          onConfirm={handleConfirmAction}
+          onClose={() => setConfirmAction(null)}
+        />
+      </SafeAreaView>
+    );
+  }
+
   const nextActionLabel = info.nextAction === 'remove' ? t('removalAction') : t('insertionAction');
 
   // The big ring number is PHASE-relative: while worn it's the cycle day
@@ -137,19 +216,6 @@ export default function MyCycleScreen() {
   // Countdown override → display strings (label differs soon vs overdue).
   const countdownOverride = countdown?.value ?? null;
   const countdownLabel = countdown ? t(countdown.labelKey, { action: nextActionLabel }) : null;
-
-  const handleConfirmAction = (date: Date, options?: { temporary?: boolean; notify?: boolean }) => {
-    if (confirmAction === 'insert') {
-      insertRing(date.toISOString());
-    } else if (confirmAction === 'remove') {
-      if (options?.temporary) {
-        startTempRemoval(options.notify ?? true);
-      } else {
-        removeRing(date.toISOString());
-      }
-    }
-    setConfirmAction(null);
-  };
 
   // handlePeriodSelect / handlePeriodRemove removed in v2.6.1 — see
   // "Mes périodes" drawer tab for the new guided flow.

@@ -17,7 +17,8 @@ import {
 type Theme = ReturnType<typeof useTheme>;
 
 interface GreetingHeaderProps {
-  info: CycleInfo;
+  /** Null on the empty home (no ring yet) — the 3rd status line is hidden. */
+  info: CycleInfo | null;
   userName: string | null;
   isRTL: boolean;
   /** True during a temporary removal — the 3rd line must not claim the ring
@@ -201,22 +202,26 @@ export function GreetingHeader({ info, userName, isRTL, isTempRemoved, theme, t 
         // "anneau en place depuis…" insertion phrase. During the pause
         // (ring out) that line would contradict the big PAUSE state, so we
         // show the pause + when it started (the actual removal date) instead.
-        const ringIsIn = info.nextAction === 'remove';
-        let insertPhrase: string;
-        if (isTempRemoved) {
-          // Ring physically out (short pause) — never say "anneau en place".
-          insertPhrase = t('tempRemovedRing');
-        } else if (ringIsIn) {
-          const insertStr = formatDateFr(info.ringInsertDate, 'EEEE dd MMMM');
-          const insertIdx = pickInsertionPhraseIndex(info.ringInsertDate);
-          insertPhrase = t(`insertionPhrases.${insertIdx}`, {
-            date: insertStr,
-            defaultValue: t('since', { date: formatDateFr(info.ringInsertDate, 'dd MMMM') }),
-          });
-        } else {
-          insertPhrase = info.removalDateTime
-            ? `${t('ringRemoved')} · ${t('since', { date: formatDateFr(info.removalDateTime, 'dd MMMM') })}`
-            : t('ringRemoved');
+        // 3rd line (status) needs cycle info. With no ring yet (empty home,
+        // info === null) we show only the date phrase.
+        let insertPhrase: string | null = null;
+        if (info) {
+          const ringIsIn = info.nextAction === 'remove';
+          if (isTempRemoved) {
+            // Ring physically out (short pause) — never say "anneau en place".
+            insertPhrase = t('tempRemovedRing');
+          } else if (ringIsIn) {
+            const insertStr = formatDateFr(info.ringInsertDate, 'EEEE dd MMMM');
+            const insertIdx = pickInsertionPhraseIndex(info.ringInsertDate);
+            insertPhrase = t(`insertionPhrases.${insertIdx}`, {
+              date: insertStr,
+              defaultValue: t('since', { date: formatDateFr(info.ringInsertDate, 'dd MMMM') }),
+            });
+          } else {
+            insertPhrase = info.removalDateTime
+              ? `${t('ringRemoved')} · ${t('since', { date: formatDateFr(info.removalDateTime, 'dd MMMM') })}`
+              : t('ringRemoved');
+          }
         }
         return (
           <>
@@ -232,9 +237,11 @@ export function GreetingHeader({ info, userName, isRTL, isTempRemoved, theme, t 
             >
               {todayPhrase}
             </Text>
-            <Text style={[styles.since, { color: theme.textLight }, isRTL && styles.rtlText]}>
-              {insertPhrase}
-            </Text>
+            {insertPhrase && (
+              <Text style={[styles.since, { color: theme.textLight }, isRTL && styles.rtlText]}>
+                {insertPhrase}
+              </Text>
+            )}
           </>
         );
       })()}
