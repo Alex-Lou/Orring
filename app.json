@@ -33,7 +33,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.orrniapp",
-      "versionCode": 34,
+      "versionCode": 35,
       "allowBackup": false
     },
     "plugins": [
@@ -46,7 +46,8 @@
           "color": "#F8B4C8"
         }
       ],
-      "./plugins/withAndroidCleanup.js"
+      "./plugins/withAndroidCleanup.js",
+      "expo-localization"
     ],
     "extra": {
       "router": {},

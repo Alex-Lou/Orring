@@ -142,4 +142,25 @@ export const styles = StyleSheet.create({
   pulseBtnText: {
     fontSize: fontSize.md, fontWeight: fontWeight.bold, letterSpacing: 0.3,
   },
+
+  // Intro carousel
+  introSkip: {
+    position: 'absolute', right: spacing.lg, zIndex: 10, padding: spacing.sm,
+  },
+  introSkipText: {
+    fontSize: fontSize.sm, fontWeight: fontWeight.semibold,
+  },
+  introSlide: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+  },
+  introIconCircle: {
+    width: 112, height: 112, borderRadius: 56,
+    alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg,
+  },
+  introDots: {
+    flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: spacing.lg,
+  },
+  introDot: {
+    width: 8, height: 8, borderRadius: 4,
+  },
 });
